@@ -12,6 +12,9 @@ jobs:
     name: Deploy on VM and run ZAP baseline
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: juice-shop
 
     steps:
       - name: Checkout repository
@@ -22,6 +25,7 @@ jobs:
         with:
           node-version: 'latest'
           cache: npm
+          cache-dependency-path: juice-shop/package-lock.json
 
       - name: Install dependencies
         run: |
@@ -58,7 +62,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: juice-shop-log
-          path: juice-shop.log
+          path: juice-shop/juice-shop.log
 
       - name: Stop Juice Shop
         if: always()
