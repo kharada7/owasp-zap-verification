@@ -25,12 +25,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd juice-shop
           npm ci
 
       - name: Start Juice Shop
         run: |
-          cd juice-shop
           npm start > juice-shop.log 2>&1 &
           echo $! > juice-shop.pid
 
