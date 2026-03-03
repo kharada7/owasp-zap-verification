@@ -25,6 +25,7 @@ jobs:
         with:
           node-version: 'latest'
           cache: npm
+          cache-dependency-path: juice-shop/package-lock.json
 
       - name: Install dependencies
         run: |
