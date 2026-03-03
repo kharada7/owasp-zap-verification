@@ -2,10 +2,6 @@ name: ZAP Scan on VM
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - develop
   pull_request:
 
 permissions:
