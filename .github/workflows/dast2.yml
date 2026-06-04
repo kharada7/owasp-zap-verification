@@ -18,14 +18,14 @@ jobs:
           node-version: 22
 
       - name: Install root dependencies
-        run: npm ci
+        run: npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
       - name: Install Juice Shop dependencies
         working-directory: ./juice-shop
-        run: npm ci
+        run: npm install
 
       - name: Start Juice Shop from repository
         working-directory: ./juice-shop
