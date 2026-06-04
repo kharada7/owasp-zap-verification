@@ -5,15 +5,6 @@ test("juice shop crawl", async ({ page }) => {
     console.log(msg.text());
   });
 
-  await page.goto("http://localhost:3000");
-
-  console.log(await page.title());
-
-  await page.screenshot({
-    path: "first-page.png",
-    fullPage: true,
-  });
-
   const browser = await chromium.launch({
     proxy: {
       server: "http://127.0.0.1:8080",
