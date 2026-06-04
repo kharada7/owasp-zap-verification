@@ -1,0 +1,40 @@
+env:
+  contexts:
+    - name: JuiceShop
+      urls:
+        - http://host.docker.internal:3000
+      authentication:
+        method: manual
+
+  parameters:
+    failOnError: false
+    failOnWarning: false
+
+jobs:
+
+  - type: spider
+    parameters:
+      context: JuiceShop
+      maxDuration: 10
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  - type: activeScan
+    parameters:
+      context: JuiceShop
+      maxRuleDurationInMins: 2
+      maxScanDurationInMins: 20
+
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/reports
+      reportFile: zap-report.html
+
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: /zap/reports
+      reportFile: zap-report.json
