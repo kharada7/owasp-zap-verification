@@ -41,26 +41,52 @@ jobs:
         run: |
           docker run -d \
             --name zap \
-            --add-host=host.docker.internal:host-gateway \
             -u zap \
             -p 8080:8080 \
             ghcr.io/zaproxy/zaproxy:stable \
-            zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true
+            zap.sh -daemon \
+            -host 0.0.0.0 \
+            -port 8080 \
+            -config api.disablekey=true
+
+      - name: Check ZAP container started
+        run: |
+          sleep 10
+          echo "=== Container Status ==="
+          docker ps | grep zap || (echo "ERROR: ZAP container not found"; docker ps; exit 1)
+          echo ""
+          echo "=== ZAP Logs (first 100 lines) ==="
+          docker logs zap 2>&1 | head -100 || true
+          echo ""
+          echo "=== Network inspection ==="
+          docker inspect zap | grep -A 5 '"Ports"' || true
 
       - name: Wait for ZAP API
         run: |
+          echo "Attempting to connect to ZAP API..."
           for i in {1..60}; do
-            if curl -sS http://127.0.0.1:8080/JSON/core/view/version/ | grep -q '"version"'; then
-              echo "ZAP API is ready"
-              exit 0
+            echo "Attempt $i/60..."
+            
+            if response=$(curl -v http://127.0.0.1:8080/JSON/core/view/version/ 2>&1); then
+              echo "curl succeeded"
+              if echo "$response" | grep -q '"version"'; then
+                echo "ZAP API is ready"
+                exit 0
+              fi
+              echo "Response: $response" | head -10
+            else
+              echo "curl failed with exit code $?"
             fi
-
-            echo "Waiting for ZAP API... ($i/60)"
+            
             sleep 3
           done
 
           echo "ZAP API did not become ready in time"
+          echo ""
+          echo "=== Final diagnostics ==="
+          docker ps || true
           docker logs zap || true
+          curl -v http://127.0.0.1:8080/ 2>&1 || true
           exit 1
 
       - name: Run Playwright via ZAP proxy
