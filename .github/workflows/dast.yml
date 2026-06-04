@@ -86,6 +86,16 @@ jobs:
             zap:/zap/reports/. \
             reports
 
+      - name: Show ZAP logs
+        if: always()
+        run: |
+          docker logs zap
+
+      - name: List reports
+        if: always()
+        run: |
+          docker exec zap ls -R /zap
+
       #
       # レポート保存
       #
