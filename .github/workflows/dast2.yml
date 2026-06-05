@@ -92,7 +92,7 @@ jobs:
           exit 1
 
       - name: Run Playwright via ZAP proxy
-        run: npx playwright test ./tests/juice-shop.spec.ts --project=chromium
+        run: npx playwright test ./tests/juice-shop.spec.ts --project=chromium --timeout=120000 --reporter=line
 
       - name: Generate ZAP report with Automation Framework
         run: |

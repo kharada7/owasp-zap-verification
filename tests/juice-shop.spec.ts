@@ -1,6 +1,7 @@
 import { test, chromium } from "@playwright/test";
 
 test("juice shop crawl", async ({ page }) => {
+  test.setTimeout(120000);
   page.on("console", (msg) => {
     console.log(msg.text());
   });
@@ -17,17 +18,21 @@ test("juice shop crawl", async ({ page }) => {
 
   page = await context.newPage();
 
-  await page.goto("http://localhost:3000");
+  page.setDefaultTimeout(60000);
+  page.setDefaultNavigationTimeout(60000);
 
-  await page.click("#navbarAccount");
-  await page.click("#navbarLoginButton");
+  await page.goto("http://localhost:3000", { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#navbarAccount", { state: "visible" });
 
-  await page.fill("#email", "demo@juice-sh.op");
-  await page.fill("#password", "demo");
+  await page.locator("#navbarAccount").click();
+  await page.locator("#navbarLoginButton").click();
 
-  await page.click("#loginButton");
+  await page.locator("#email").fill("demo@juice-sh.op");
+  await page.locator("#password").fill("demo");
 
-  await page.goto("http://localhost:3000/#/search");
+  await page.locator("#loginButton").click();
+
+  await page.goto("http://localhost:3000/#/search", { waitUntil: "domcontentloaded" });
 
   await browser.close();
 });
