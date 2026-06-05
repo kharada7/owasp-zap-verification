@@ -14,6 +14,7 @@ test("juice shop crawl", async ({ page }) => {
 
   const context = await browser.newContext({
     ignoreHTTPSErrors: true,
+    viewport: { width: 1280, height: 720 },
   });
 
   page = await context.newPage();
