@@ -22,7 +22,7 @@ test("juice shop crawl", async ({ page }) => {
   page.setDefaultTimeout(60000);
   page.setDefaultNavigationTimeout(60000);
 
-  await page.goto("http://localhost:3000", { waitUntil: "load" });
+  await page.goto("http://host.docker.internal:3000", { waitUntil: "load" });
   // 診断用スクリーンショット（タイムアウト調査後は削除可）
   await page.screenshot({ path: "test-results/after-goto.png" });
   await page.waitForSelector("app-root", { state: "attached" });
@@ -36,7 +36,7 @@ test("juice shop crawl", async ({ page }) => {
 
   await page.locator("#loginButton").click();
 
-  await page.goto("http://localhost:3000/#/search", { waitUntil: "domcontentloaded" });
+  await page.goto("http://host.docker.internal:3000/#/search", { waitUntil: "domcontentloaded" });
 
   await browser.close();
 });

@@ -41,6 +41,7 @@ jobs:
         run: |
           docker run -d \
             --name zap \
+            --add-host=host.docker.internal:host-gateway \
             -u zap \
             -p 8080:8080 \
             ghcr.io/zaproxy/zaproxy:stable \
