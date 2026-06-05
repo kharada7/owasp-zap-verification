@@ -22,7 +22,10 @@ test("juice shop crawl", async ({ page }) => {
   page.setDefaultTimeout(60000);
   page.setDefaultNavigationTimeout(60000);
 
-  await page.goto("http://localhost:3000", { waitUntil: "domcontentloaded" });
+  await page.goto("http://localhost:3000", { waitUntil: "load" });
+  // 診断用スクリーンショット（タイムアウト調査後は削除可）
+  await page.screenshot({ path: "test-results/after-goto.png" });
+  await page.waitForSelector("app-root", { state: "attached" });
   await page.waitForSelector("#navbarAccount", { state: "visible" });
 
   await page.locator("#navbarAccount").click();
