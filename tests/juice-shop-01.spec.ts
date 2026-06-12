@@ -55,7 +55,7 @@ test("juice-shop scenario 01", async ({ page }) => {
   await page
     .getByRole("textbox", { name: "Text field for the login password" })
     .fill("ncc-1701");
-  await page.getByRole("button", { name: "Login" }).click();
+  await page.locator('button[name="Login"][id="loginButton"]').click();
 
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
 
