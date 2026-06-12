@@ -1,7 +1,7 @@
 import { expect, test, chromium } from "@playwright/test";
 
 test("juice-shop scenario 01", async ({ page }) => {
-  test.setTimeout(180000);
+  test.setTimeout(60000);
 
   page.on("console", (msg) => {
     console.log(msg.text());
@@ -12,6 +12,8 @@ test("juice-shop scenario 01", async ({ page }) => {
       server: "http://127.0.0.1:8080",
     },
   });
+
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
 
