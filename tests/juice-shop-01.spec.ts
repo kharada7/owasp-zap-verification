@@ -3,6 +3,19 @@ import { expect, test, chromium } from "@playwright/test";
 test("juice-shop scenario 01", async ({ page }) => {
   test.setTimeout(60000);
 
+  const neutralizeCookieBanner = async () => {
+    await page.evaluate(() => {
+      for (const selector of [".cc-window", ".cc-revoke"]) {
+        for (const el of Array.from(document.querySelectorAll(selector))) {
+          const node = el as HTMLElement;
+          node.style.pointerEvents = "none";
+          node.style.visibility = "hidden";
+          node.style.display = "none";
+        }
+      }
+    });
+  };
+
   page.on("console", (msg) => {
     console.log(msg.text());
   });
@@ -17,11 +30,20 @@ test("juice-shop scenario 01", async ({ page }) => {
 
   await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
 
-  // Close cookie banner if shown.
+  // Close cookie banner and neutralize its overlay if it keeps intercepting clicks.
   const cookieConsent = page.getByRole("dialog", { name: "cookieconsent" });
   if (await cookieConsent.isVisible().catch(() => false)) {
-    await page.getByRole("button", { name: "dismiss cookie message" }).click();
+    await page
+      .getByRole("button", { name: /dismiss cookie message/i })
+      .click({ force: true })
+      .catch(() => {});
   }
+  await page
+    .locator('div[role="dialog"][aria-label="cookieconsent"]')
+    .first()
+    .waitFor({ state: "hidden", timeout: 5000 })
+    .catch(() => {});
+  await neutralizeCookieBanner();
 
   // Close welcome modal if shown.
   const dismissWelcome = page.getByRole("button", {
@@ -31,23 +53,19 @@ test("juice-shop scenario 01", async ({ page }) => {
     await dismissWelcome.click();
   }
 
-  // Open login from left sidenav if possible, otherwise via account menu.
-  const openSidenav = page.getByRole("button", { name: "Open Sidenav" });
-  if (await openSidenav.isVisible().catch(() => false)) {
-    await openSidenav.click();
-    const sidenavLogin = page.getByRole("link", { name: "Login" });
-    if (await sidenavLogin.isVisible().catch(() => false)) {
-      await sidenavLogin.click();
-    } else {
-      await page
-        .getByRole("button", { name: "Show/hide account menu" })
-        .click();
-      await page.getByRole("menuitem", { name: "Login" }).click();
-    }
-  } else {
-    await page.getByRole("button", { name: "Show/hide account menu" }).click();
-    await page.getByRole("menuitem", { name: "Login" }).click();
+  const blockingOverlay = page.locator(
+    ".cdk-overlay-backdrop.cdk-overlay-backdrop-showing",
+  );
+  if (await blockingOverlay.first().isVisible().catch(() => false)) {
+    await page.keyboard.press("Escape").catch(() => {});
+    await blockingOverlay.first().click({ force: true }).catch(() => {});
+    await blockingOverlay.first().waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
   }
+
+  // Click navbar account button and then login button.
+  await page.locator("#navbarAccount").click();
+  await page.locator("#navbarLoginButton").waitFor({ state: "visible" });
+  await page.locator("#navbarLoginButton").click();
 
   await expect(page).toHaveURL(/#\/login$/);
 
@@ -60,6 +78,7 @@ test("juice-shop scenario 01", async ({ page }) => {
   await page.locator('button[id="loginButton"]').click();
 
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
+  await neutralizeCookieBanner();
 
   // Attempt to add the sold-out mask, then add Lemon Juice.
   await page
@@ -95,26 +114,28 @@ test("juice-shop scenario 01", async ({ page }) => {
 
   await expect(page).toHaveURL(/#\/address\/select$/);
 
-  await page
-    .locator("tr")
-    .filter({ hasText: "Alice" })
-    .getByRole("radio")
-    .check();
-  await page.getByRole("button", { name: "Continue" }).click();
+  const aliceAddressRow = page.locator("tr, mat-row").filter({ hasText: /Alice/ });
+  await expect(aliceAddressRow.first()).toBeVisible();
+
+  await aliceAddressRow.first().locator("mat-radio-button").first().click();
+  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
 
   await expect(page).toHaveURL(/#\/delivery-method$/);
 
-  await page
-    .locator("tr")
-    .filter({ hasText: "Fast Delivery" })
-    .getByRole("radio")
-    .check();
-  await page.getByRole("button", { name: "Continue" }).click();
+  const fastDeliveryRow = page
+    .locator("tr, mat-row")
+    .filter({ hasText: /Fast Delivery/ });
+  await expect(fastDeliveryRow.first()).toBeVisible();
+
+  await fastDeliveryRow.first().locator("mat-radio-button").first().click();
+  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
 
   await expect(page).toHaveURL(/#\/payment\/shop$/);
 
-  await page.locator("table").first().getByRole("radio").first().check();
-  await page.getByRole("button", { name: "Continue" }).click();
+  const paymentMethodRow = page.locator("tr, mat-row").filter({ hasText: /\/\d{4}$/ });
+  await expect(paymentMethodRow.first()).toBeVisible();
+  await paymentMethodRow.first().locator("mat-radio-button").first().click();
+  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
 
   await expect(page).toHaveURL(/#\/order-summary$/);
 
