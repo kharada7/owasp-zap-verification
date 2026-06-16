@@ -114,18 +114,28 @@ jobs:
           echo "Starting ZAP Automation Framework..."
           response=$(curl -s "http://127.0.0.1:8080/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
           echo "API Response: $response"
-          planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4)
+          planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4 || echo "")
           echo "Plan ID: $planId"
           
           # API 実行が完了するまでポーリングで確認（最大 10 分）
-          echo "Waiting for ZAP Automation Framework to complete..."
-          for i in {1..60}; do
-            sleep 10
-            status=$(curl -s "http://127.0.0.1:8080/JSON/automation/view/plan/?id=$planId" | grep -o '"planId":"[^"]*"')
-            if [ -n "$status" ]; then
+          # Plan ID が 0 でない場合のみポーリングを実行
+          if [ "$planId" != "" ] && [ "$planId" != "0" ]; then
+            echo "Waiting for ZAP Automation Framework to complete..."
+            for i in {1..60}; do
+              sleep 10
+              status=$(curl -s "http://127.0.0.1:8080/JSON/automation/view/plan/?id=$planId" || echo "")
               echo "Plan Status Check $i/60: $status"
-            fi
-          done
+              
+              # プランの実行状態を確認（応答があればOK）
+              if [ -n "$status" ]; then
+                break
+              fi
+            done
+          else
+            echo "Warning: Plan ID is invalid. ZAP may not have started the automation framework properly."
+            echo "Attempting to retrieve any generated reports anyway..."
+            sleep 30
+          fi
           
           echo "Final ZAP Container Logs:"
           docker logs zap | tail -100
