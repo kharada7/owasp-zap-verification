@@ -41,9 +41,8 @@ jobs:
         run: |
           docker run -d \
             --name zap \
-            --add-host=host.docker.internal:host-gateway \
+            --network=host \
             -u zap \
-            -p 8080:8080 \
             ghcr.io/zaproxy/zaproxy:stable \
             zap.sh -daemon \
             -host 0.0.0.0 \
@@ -107,40 +106,11 @@ jobs:
         run: |
           mkdir -p reports
 
-          # ホスト IP を取得（GitHub Actions では host.docker.internal が不安定な場合があるため）
-          HOST_IP=$(hostname -I | awk '{print $1}')
-          echo "Host IP: $HOST_IP"
-          
-          # Juice Shop への接続を確認
-          echo "Checking Juice Shop accessibility from this host..."
-          if curl -fsS http://127.0.0.1:3000/ > /dev/null; then
-            echo "✓ Juice Shop is accessible via 127.0.0.1:3000"
-            TARGET_URL="http://127.0.0.1:3000"
-          elif curl -fsS http://localhost:3000/ > /dev/null; then
-            echo "✓ Juice Shop is accessible via localhost:3000"
-            TARGET_URL="http://localhost:3000"
-          else
-            echo "✗ Juice Shop is not accessible from localhost/127.0.0.1"
-            echo "Attempting to use host IP: $HOST_IP"
-            TARGET_URL="http://$HOST_IP:3000"
-          fi
-          echo "Target URL for ZAP: $TARGET_URL"
-
-          # automation.yaml をコンテナに コピーする前に、URL を置き換える
-          cp zap/automation.yaml zap/automation-temp.yaml
-          sed -i "s|http://host.docker.internal:3000|$TARGET_URL|g" zap/automation-temp.yaml
-          sed -i "s|http://localhost:3000|$TARGET_URL|g" zap/automation-temp.yaml
-          
-          echo "Modified automation.yaml:"
-          cat zap/automation-temp.yaml
-          
-          docker cp zap/automation-temp.yaml zap:/tmp/automation.yaml
+          docker cp zap/automation.yaml zap:/tmp/automation.yaml
           docker exec zap mkdir -p /zap/reports
 
           # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
-          # docker exec で zap.sh -cmd を実行すると /home/zap/.ZAP/ を
-          # デーモンと共有してしまい "home directory is already in use" エラーが発生するため、
-          # REST API を使用して同一プロセス上でプランを実行する。
+          # --network=host によりコンテナ内の localhost はホストの localhost と同一。
           echo "Starting ZAP Automation Framework..."
           response=$(curl -s "http://127.0.0.1:8080/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
           echo "API Response: $response"

@@ -2,7 +2,7 @@ env:
   contexts:
     - name: JuiceShop
       urls:
-        - http://host.docker.internal:3000
+        - http://localhost:3000
       authentication:
         method: manual
 
