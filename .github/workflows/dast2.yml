@@ -93,7 +93,12 @@ jobs:
           exit 1
 
       - name: Run Playwright via ZAP proxy
-        run: npx playwright test ./tests/juice-shop-01.spec.ts --project=chromium --timeout=120000 --reporter=html --reporter=line
+        run: |
+          echo "Running Playwright tests..."
+          npx playwright test ./tests/juice-shop-01.spec.ts --project=chromium --timeout=120000 --reporter=html --reporter=line
+          echo "Playwright tests completed with exit code: $?"
+          echo "Checking for playwright-report directory..."
+          ls -la playwright-report/ || echo "Warning: playwright-report not found"
 
       - name: Generate ZAP report with Automation Framework
         run: |
@@ -109,15 +114,28 @@ jobs:
           echo "Starting ZAP Automation Framework..."
           response=$(curl -s "http://127.0.0.1:8080/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
           echo "API Response: $response"
+          planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4)
+          echo "Plan ID: $planId"
           
-          # API 実行が完了するまで待機（最大 5 分）
-          sleep 30
+          # API 実行が完了するまでポーリングで確認（最大 10 分）
+          echo "Waiting for ZAP Automation Framework to complete..."
+          for i in {1..60}; do
+            sleep 10
+            status=$(curl -s "http://127.0.0.1:8080/JSON/automation/view/plan/?id=$planId" | grep -o '"planId":"[^"]*"')
+            if [ -n "$status" ]; then
+              echo "Plan Status Check $i/60: $status"
+            fi
+          done
+          
+          echo "Final ZAP Container Logs:"
+          docker logs zap | tail -100
           
           # コンテナからレポートをコピー
           echo "Copying reports from ZAP container..."
           docker cp zap:/zap/reports/. reports || echo "Warning: Could not copy reports"
           
           # レポートが実際に生成されたか確認
+          echo "Checking generated reports:"
           ls -la reports/ || echo "Warning: reports directory is empty"
           find reports -type f -name "*.html" -o -name "*.json" || echo "Warning: No report files found"
 
