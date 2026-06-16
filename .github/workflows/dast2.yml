@@ -99,12 +99,42 @@ jobs:
           echo "Playwright tests completed with exit code: $?"
           echo "Checking for playwright-report directory..."
           ls -la playwright-report/ || echo "Warning: playwright-report not found"
+          
+          echo "Verifying Juice Shop is still running..."
+          curl -fsS http://127.0.0.1:3000/ > /dev/null && echo "✓ Juice Shop is accessible" || echo "✗ Juice Shop is not accessible"
 
       - name: Generate ZAP report with Automation Framework
         run: |
           mkdir -p reports
 
-          docker cp zap/automation.yaml zap:/tmp/automation.yaml
+          # ホスト IP を取得（GitHub Actions では host.docker.internal が不安定な場合があるため）
+          HOST_IP=$(hostname -I | awk '{print $1}')
+          echo "Host IP: $HOST_IP"
+          
+          # Juice Shop への接続を確認
+          echo "Checking Juice Shop accessibility from this host..."
+          if curl -fsS http://127.0.0.1:3000/ > /dev/null; then
+            echo "✓ Juice Shop is accessible via 127.0.0.1:3000"
+            TARGET_URL="http://127.0.0.1:3000"
+          elif curl -fsS http://localhost:3000/ > /dev/null; then
+            echo "✓ Juice Shop is accessible via localhost:3000"
+            TARGET_URL="http://localhost:3000"
+          else
+            echo "✗ Juice Shop is not accessible from localhost/127.0.0.1"
+            echo "Attempting to use host IP: $HOST_IP"
+            TARGET_URL="http://$HOST_IP:3000"
+          fi
+          echo "Target URL for ZAP: $TARGET_URL"
+
+          # automation.yaml をコンテナに コピーする前に、URL を置き換える
+          cp zap/automation.yaml zap/automation-temp.yaml
+          sed -i "s|http://host.docker.internal:3000|$TARGET_URL|g" zap/automation-temp.yaml
+          sed -i "s|http://localhost:3000|$TARGET_URL|g" zap/automation-temp.yaml
+          
+          echo "Modified automation.yaml:"
+          cat zap/automation-temp.yaml
+          
+          docker cp zap/automation-temp.yaml zap:/tmp/automation.yaml
           docker exec zap mkdir -p /zap/reports
 
           # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
