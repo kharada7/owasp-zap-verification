@@ -101,7 +101,12 @@ jobs:
 
           docker cp zap/automation.yaml zap:/tmp/automation.yaml
           docker exec zap mkdir -p /zap/reports
-          docker exec zap zap.sh -cmd -autorun /tmp/automation.yaml
+
+          # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
+          # docker exec で zap.sh -cmd を実行すると /home/zap/.ZAP/ を
+          # デーモンと共有してしまい "home directory is already in use" エラーが発生するため、
+          # REST API を使用して同一プロセス上でプランを実行する。
+          curl -sf "http://127.0.0.1:8080/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml"
 
           docker cp zap:/zap/reports/. reports
 
