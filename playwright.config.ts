@@ -33,8 +33,8 @@ export default defineConfig({
       server: 'http://127.0.0.1:8080',
     },
 
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
+    /* Keep trace only for failed tests to preserve debugging data with lower artifact size. */
+    trace: 'retain-on-failure',
   },
 
   /* Configure projects for major browsers */
