@@ -3,6 +3,29 @@ import { expect, test, chromium } from "@playwright/test";
 test("juice-shop scenario 01", async ({ page }) => {
   test.setTimeout(60000);
 
+  const openAccountMenuAndClickLogin = async () => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.keyboard.press("Escape").catch(() => {});
+      await page
+        .locator(".cdk-overlay-backdrop.cdk-overlay-backdrop-showing")
+        .first()
+        .waitFor({ state: "hidden", timeout: 5000 })
+        .catch(() => {});
+
+      await page.locator("#navbarAccount").click();
+
+      const loginInMenu = page.locator(".cdk-overlay-pane #navbarLoginButton").first();
+      await loginInMenu.waitFor({ state: "visible", timeout: 10000 });
+
+      try {
+        await loginInMenu.click({ timeout: 10000 });
+        return;
+      } catch (error) {
+        if (attempt === 3) throw error;
+      }
+    }
+  };
+
   const neutralizeCookieBanner = async () => {
     await page.evaluate(() => {
       for (const selector of [".cc-window", ".cc-revoke"]) {
@@ -62,10 +85,8 @@ test("juice-shop scenario 01", async ({ page }) => {
     await blockingOverlay.first().waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
   }
 
-  // Click navbar account button and then login button.
-  await page.locator("#navbarAccount").click();
-  await page.locator("#navbarLoginButton").waitFor({ state: "visible" });
-  await page.locator("#navbarLoginButton").click();
+  // Open account menu and click login in overlay pane with retries.
+  await openAccountMenuAndClickLogin();
 
   await expect(page).toHaveURL(/#\/login$/);
 

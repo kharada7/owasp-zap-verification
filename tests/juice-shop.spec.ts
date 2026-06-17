@@ -50,8 +50,15 @@ test("juice shop crawl", async ({ page }) => {
   await page.waitForSelector("app-root", { state: "attached" });
   await page.waitForSelector("#navbarAccount", { state: "visible" });
 
+  await page.keyboard.press("Escape").catch(() => {});
+  await page
+    .locator(".cdk-overlay-backdrop.cdk-overlay-backdrop-showing")
+    .first()
+    .waitFor({ state: "hidden", timeout: 5000 })
+    .catch(() => {});
+
   await page.locator("#navbarAccount").click();
-  await page.locator("#navbarLoginButton").click();
+  await page.locator(".cdk-overlay-pane #navbarLoginButton").first().click();
 
   await page.locator("#email").fill("demo@juice-sh.op");
   await page.locator("#password").fill("demo");
