@@ -104,6 +104,8 @@ jobs:
 
       - name: Generate ZAP report with Automation Framework
         run: |
+          set -euo pipefail
+
           mkdir -p reports
 
           docker cp zap/automation.yaml zap:/tmp/automation.yaml
@@ -116,25 +118,35 @@ jobs:
           echo "API Response: $response"
           planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4 || echo "")
           echo "Plan ID: $planId"
-          
-          # API 実行が完了するまでポーリングで確認（最大 10 分）
-          # Plan ID が 0 でない場合のみポーリングを実行
-          if [ "$planId" != "" ] && [ "$planId" != "0" ]; then
-            echo "Waiting for ZAP Automation Framework to complete..."
-            for i in {1..60}; do
-              sleep 10
-              status=$(curl -s "http://127.0.0.1:8080/JSON/automation/view/plan/?id=$planId" || echo "")
-              echo "Plan Status Check $i/60: $status"
-              
-              # プランの実行状態を確認（応答があればOK）
-              if [ -n "$status" ]; then
-                break
-              fi
-            done
-          else
-            echo "Warning: Plan ID is invalid. ZAP may not have started the automation framework properly."
-            echo "Attempting to retrieve any generated reports anyway..."
-            sleep 30
+
+          # planId が取得できない場合は即失敗。
+          if [ -z "$planId" ]; then
+            echo "ERROR: Failed to start automation plan (planId is empty)."
+            docker logs zap | tail -200 || true
+            exit 1
+          fi
+
+          # レポート生成完了をポーリングで待機（最大 10 分）。
+          # planId は 0 も有効値になりうるため不正扱いしない。
+          echo "Waiting for ZAP reports to be generated..."
+          generated=false
+          for i in {1..60}; do
+            if docker exec zap sh -c 'test -s /zap/reports/zap-report.html && test -s /zap/reports/zap-report.json'; then
+              echo "Reports are present in container."
+              generated=true
+              break
+            fi
+
+            progress=$(curl -s "http://127.0.0.1:8080/JSON/automation/view/planProgress/?planId=$planId" || true)
+            echo "Plan Progress $i/60: ${progress:-<empty>}"
+            sleep 10
+          done
+
+          if [ "$generated" != "true" ]; then
+            echo "ERROR: ZAP reports were not generated within timeout."
+            echo "=== ZAP logs (last 300 lines) ==="
+            docker logs zap | tail -300 || true
+            exit 1
           fi
           
           echo "Final ZAP Container Logs:"
@@ -146,8 +158,14 @@ jobs:
           
           # レポートが実際に生成されたか確認
           echo "Checking generated reports:"
-          ls -la reports/ || echo "Warning: reports directory is empty"
-          find reports -type f -name "*.html" -o -name "*.json" || echo "Warning: No report files found"
+          ls -la reports/
+          find reports -type f \( -name "*.html" -o -name "*.json" \)
+
+          if [ ! -s reports/zap-report.html ] || [ ! -s reports/zap-report.json ]; then
+            echo "ERROR: Required ZAP reports are missing or empty."
+            echo "Expected files: reports/zap-report.html and reports/zap-report.json"
+            exit 1
+          fi
 
       - name: Upload Playwright report
         if: always()
@@ -164,6 +182,7 @@ jobs:
         with:
           name: zap-report
           path: reports
+          if-no-files-found: error
 
       - name: Upload runtime logs
         if: always()
