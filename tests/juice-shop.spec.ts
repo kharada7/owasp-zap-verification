@@ -2,6 +2,21 @@ import { test, chromium } from "@playwright/test";
 
 test("juice shop crawl", async ({ page }) => {
   test.setTimeout(120000);
+
+  const closeBlockingOverlays = async () => {
+    const backdrop = page.locator(
+      ".cdk-overlay-backdrop.cdk-overlay-backdrop-showing",
+    );
+    for (let i = 0; i < 5; i++) {
+      if (!(await backdrop.first().isVisible().catch(() => false))) {
+        return;
+      }
+      await page.keyboard.press("Escape").catch(() => {});
+      await backdrop.first().click({ force: true }).catch(() => {});
+      await backdrop.first().waitFor({ state: "hidden", timeout: 2000 }).catch(() => {});
+    }
+  };
+
   page.on("console", (msg) => {
     console.log(msg.text());
   });
@@ -50,14 +65,9 @@ test("juice shop crawl", async ({ page }) => {
   await page.waitForSelector("app-root", { state: "attached" });
   await page.waitForSelector("#navbarAccount", { state: "visible" });
 
-  await page.keyboard.press("Escape").catch(() => {});
-  await page
-    .locator(".cdk-overlay-backdrop.cdk-overlay-backdrop-showing")
-    .first()
-    .waitFor({ state: "hidden", timeout: 5000 })
-    .catch(() => {});
+  await closeBlockingOverlays();
 
-  await page.locator("#navbarAccount").click();
+  await page.locator("#navbarAccount").click({ timeout: 10000 });
   await page.locator(".cdk-overlay-pane #navbarLoginButton").first().click();
 
   await page.locator("#email").fill("demo@juice-sh.op");

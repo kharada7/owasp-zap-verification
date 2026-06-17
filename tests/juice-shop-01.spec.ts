@@ -3,16 +3,25 @@ import { expect, test, chromium } from "@playwright/test";
 test("juice-shop scenario 01", async ({ page }) => {
   test.setTimeout(60000);
 
+  const closeBlockingOverlays = async () => {
+    const backdrop = page.locator(
+      ".cdk-overlay-backdrop.cdk-overlay-backdrop-showing",
+    );
+    for (let i = 0; i < 5; i++) {
+      if (!(await backdrop.first().isVisible().catch(() => false))) {
+        return;
+      }
+      await page.keyboard.press("Escape").catch(() => {});
+      await backdrop.first().click({ force: true }).catch(() => {});
+      await backdrop.first().waitFor({ state: "hidden", timeout: 2000 }).catch(() => {});
+    }
+  };
+
   const openAccountMenuAndClickLogin = async () => {
     for (let attempt = 1; attempt <= 3; attempt++) {
-      await page.keyboard.press("Escape").catch(() => {});
-      await page
-        .locator(".cdk-overlay-backdrop.cdk-overlay-backdrop-showing")
-        .first()
-        .waitFor({ state: "hidden", timeout: 5000 })
-        .catch(() => {});
+      await closeBlockingOverlays();
 
-      await page.locator("#navbarAccount").click();
+      await page.locator("#navbarAccount").click({ timeout: 10000 });
 
       const loginInMenu = page.locator(".cdk-overlay-pane #navbarLoginButton").first();
       await loginInMenu.waitFor({ state: "visible", timeout: 10000 });
@@ -21,6 +30,7 @@ test("juice-shop scenario 01", async ({ page }) => {
         await loginInMenu.click({ timeout: 10000 });
         return;
       } catch (error) {
+        await closeBlockingOverlays();
         if (attempt === 3) throw error;
       }
     }
@@ -76,14 +86,7 @@ test("juice-shop scenario 01", async ({ page }) => {
     await dismissWelcome.click();
   }
 
-  const blockingOverlay = page.locator(
-    ".cdk-overlay-backdrop.cdk-overlay-backdrop-showing",
-  );
-  if (await blockingOverlay.first().isVisible().catch(() => false)) {
-    await page.keyboard.press("Escape").catch(() => {});
-    await blockingOverlay.first().click({ force: true }).catch(() => {});
-    await blockingOverlay.first().waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
-  }
+  await closeBlockingOverlays();
 
   // Open account menu and click login in overlay pane with retries.
   await openAccountMenuAndClickLogin();
