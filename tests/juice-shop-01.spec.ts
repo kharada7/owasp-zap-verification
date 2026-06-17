@@ -83,7 +83,7 @@ test("juice-shop scenario 01", async ({ page }) => {
   // Attempt to add the sold-out mask, then add Lemon Juice.
   await page
     .locator("mat-card")
-    .filter({ hasText: 'OWASP Juice Shop "King of the Hill" Facemask' })
+    .filter({ hasText: 'Best Juice Shop Salesman Artwork' })
     .getByRole("button", { name: "Add to Basket" })
     .click();
   await page
