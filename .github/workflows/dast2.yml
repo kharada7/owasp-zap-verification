@@ -126,11 +126,11 @@ jobs:
             exit 1
           fi
 
-          # レポート生成完了をポーリングで待機（最大 10 分）。
+          # レポート生成完了をポーリングで待機（最大 45 分）。
           # planId は 0 も有効値になりうるため不正扱いしない。
           echo "Waiting for ZAP reports to be generated..."
           generated=false
-          for i in {1..60}; do
+          for i in {1..270}; do
             if docker exec zap sh -c 'test -s /zap/reports/zap-report.html && test -s /zap/reports/zap-report.json'; then
               echo "Reports are present in container."
               generated=true
@@ -138,7 +138,14 @@ jobs:
             fi
 
             progress=$(curl -s "http://127.0.0.1:8080/JSON/automation/view/planProgress/?planId=$planId" || true)
-            echo "Plan Progress $i/60: ${progress:-<empty>}"
+            echo "Plan Progress $i/270: ${progress:-<empty>}"
+
+            # 明確な失敗状態が返ってきた場合は待機を打ち切る。
+            if echo "$progress" | grep -Eiq '"(status|state|phase)":"(failed|error|aborted|stopped)"'; then
+              echo "ERROR: Automation plan entered a failure state."
+              docker logs zap | tail -300 || true
+              exit 1
+            fi
             sleep 10
           done
 
