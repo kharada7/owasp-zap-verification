@@ -28,10 +28,8 @@ export default defineConfig({
     /* Base URL to use in actions like `await page.goto('')`. */
     // baseURL: 'http://localhost:3000',
 
-    /* Proxy settings for ZAP */
-    proxy: {
-      server: 'http://127.0.0.1:8080',
-    },
+    /* Proxy settings for ZAP — enabled only when ZAP_PROXY env var is set */
+    ...(process.env.ZAP_PROXY ? { proxy: { server: process.env.ZAP_PROXY } } : {}),
 
     /* Keep trace only for failed tests to preserve debugging data with lower artifact size. */
     trace: 'retain-on-failure',

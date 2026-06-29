@@ -1,4 +1,4 @@
-import { expect, test, chromium } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   closeBlockingOverlays,
   openAccountMenuAndClickLogin,
@@ -10,13 +10,6 @@ test("juice-shop scenario 01", async ({ page }) => {
 
   page.on("console", (msg) => {
     console.log(msg.text());
-  });
-
-  const browser = await chromium.launch({
-    // OWASP ZAP をプロキシとして使用する。
-    proxy: {
-      server: "http://127.0.0.1:8080",
-    },
   });
 
   await page.setViewportSize({ width: 1280, height: 720 });

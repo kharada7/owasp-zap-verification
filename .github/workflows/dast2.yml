@@ -7,6 +7,8 @@ jobs:
   dast:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      ZAP_PROXY: http://127.0.0.1:8080
 
     steps:
       - name: Checkout repository
@@ -69,7 +71,7 @@ jobs:
           for i in {1..60}; do
             echo "Attempt $i/60..."
             
-            if response=$(curl -v http://127.0.0.1:8080/JSON/core/view/version/ 2>&1); then
+            if response=$(curl -v $ZAP_PROXY/JSON/core/view/version/ 2>&1); then
               echo "curl succeeded"
               if echo "$response" | grep -q '"version"'; then
                 echo "ZAP API is ready"
@@ -88,7 +90,7 @@ jobs:
           echo "=== Final diagnostics ==="
           docker ps || true
           docker logs zap || true
-          curl -v http://127.0.0.1:8080/ 2>&1 || true
+          curl -v $ZAP_PROXY/ 2>&1 || true
           exit 1
 
       - name: Run Playwright via ZAP proxy
@@ -114,7 +116,7 @@ jobs:
           # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
           # --network=host によりコンテナ内の localhost はホストの localhost と同一。
           echo "Starting ZAP Automation Framework..."
-          response=$(curl -s "http://127.0.0.1:8080/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
+          response=$(curl -s "$ZAP_PROXY/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
           echo "API Response: $response"
           planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4 || echo "")
           echo "Plan ID: $planId"
@@ -137,7 +139,7 @@ jobs:
               break
             fi
 
-            progress=$(curl -s "http://127.0.0.1:8080/JSON/automation/view/planProgress/?planId=$planId" || true)
+            progress=$(curl -s "$ZAP_PROXY/JSON/automation/view/planProgress/?planId=$planId" || true)
             echo "Plan Progress $i/270: ${progress:-<empty>}"
 
             # 明確な失敗状態が返ってきた場合は待機を打ち切る。
