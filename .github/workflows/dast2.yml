@@ -96,7 +96,7 @@ jobs:
       - name: Run Playwright via ZAP proxy
         run: |
           echo "Running Playwright tests..."
-          npx playwright test ./tests/juice-shop-01.spec.ts --project=chromium --timeout=120000 --reporter=html --reporter=line
+          npx playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
           echo "Playwright tests completed with exit code: $?"
           echo "Checking for playwright-report directory..."
           ls -la playwright-report/ || echo "Warning: playwright-report not found"

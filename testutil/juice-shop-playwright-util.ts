@@ -48,3 +48,30 @@ export const neutralizeCookieBanner = async (page: Page) => {
     }
   });
 };
+
+// Cookieの同意ダイアログを閉じて無効化する。
+export const closeCookieBanner = async (page: Page) => {
+  const cookieConsent = page.getByRole("dialog", { name: "cookieconsent" });
+  if (await cookieConsent.isVisible().catch(() => false)) {
+    await page
+      .getByRole("button", { name: /dismiss cookie message/i })
+      .click({ force: true })
+      .catch(() => {});
+  }
+  await page
+    .locator('div[role="dialog"][aria-label="cookieconsent"]')
+    .first()
+    .waitFor({ state: "hidden", timeout: 5000 })
+    .catch(() => {});
+  await neutralizeCookieBanner(page);
+};
+
+// ウェルカムモーダルが表示されている場合は閉じる。
+export const dismissWelcomeBanner = async (page: Page) => {
+  const dismissWelcome = page.getByRole("button", {
+    name: "Close Welcome Banner",
+  });
+  if (await dismissWelcome.isVisible().catch(() => false)) {
+    await dismissWelcome.click();
+  }
+};

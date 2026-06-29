@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { login } from "../pages/login";
 import {
   closeBlockingOverlays,
+  closeCookieBanner,
+  dismissWelcomeBanner,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
@@ -17,27 +20,10 @@ test("juice-shop scenario 01", async ({ page }) => {
   await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
 
   // Close cookie banner and neutralize its overlay if it keeps intercepting clicks.
-  const cookieConsent = page.getByRole("dialog", { name: "cookieconsent" });
-  if (await cookieConsent.isVisible().catch(() => false)) {
-    await page
-      .getByRole("button", { name: /dismiss cookie message/i })
-      .click({ force: true })
-      .catch(() => {});
-  }
-  await page
-    .locator('div[role="dialog"][aria-label="cookieconsent"]')
-    .first()
-    .waitFor({ state: "hidden", timeout: 5000 })
-    .catch(() => {});
-  await neutralizeCookieBanner(page);
+  await closeCookieBanner(page);
 
   // Close welcome modal if shown.
-  const dismissWelcome = page.getByRole("button", {
-    name: "Close Welcome Banner",
-  });
-  if (await dismissWelcome.isVisible().catch(() => false)) {
-    await dismissWelcome.click();
-  }
+  await dismissWelcomeBanner(page);
 
   await closeBlockingOverlays(page);
 
@@ -46,13 +32,7 @@ test("juice-shop scenario 01", async ({ page }) => {
 
   await expect(page).toHaveURL(/#\/login$/);
 
-  await page
-    .getByRole("textbox", { name: "Text field for the login email" })
-    .fill("jim@juice-sh.op");
-  await page
-    .getByRole("textbox", { name: "Text field for the login password" })
-    .fill("ncc-1701");
-  await page.locator('button[id="loginButton"]').click();
+  await login(page, "jim@juice-sh.op", "ncc-1701");
 
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
