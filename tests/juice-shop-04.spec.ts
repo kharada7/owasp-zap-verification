@@ -45,8 +45,11 @@ test("juice-shop scenario 04", async ({ page }) => {
   await page.getByRole("button", { name: "Become deluxe member" }).click();
   await expect(page).toHaveURL(/#\/payment\/deluxe$/);
 
-  // ID が "mat-radio-43-input" の input[type=radio] 要素を選択する。
-  await page.locator("#mat-radio-43-input").check();
+  // 支払い方法一覧の先頭ラジオを選択する（動的IDに依存しない）。
+  const firstPaymentMethodRadio = page.locator("app-payment-method mat-row mat-radio-button").first();
+  await expect(firstPaymentMethodRadio).toBeVisible();
+  await firstPaymentMethodRadio.click();
+  await expect(page.getByRole("button", { name: "Proceed to review" })).toBeEnabled();
 
   // ID が "mat-expansion-panel-header-1" の要素をクリックする
   await page.locator("#mat-expansion-panel-header-1").click();
