@@ -8,7 +8,8 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-test("juice-shop scenario 03", async ({ page }) => {
+// ログイン後に Complain ページにアクセスして、苦情を送信するシナリオ
+test("access-complain-and-submit-complaint", async ({ page }) => {
   test.setTimeout(60000);
 
   page.on("console", (msg) => {

@@ -8,7 +8,8 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-test("juice-shop scenario 04", async ({ page }) => {
+// ログイン後に Deluxe Membership ページにアクセスして、 Deluxe Membership にアップグレードするシナリオ
+test("access-deluxe-membership", async ({ page }) => {
   test.setTimeout(60000);
 
   page.on("console", (msg) => {

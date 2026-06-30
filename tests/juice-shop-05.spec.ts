@@ -8,7 +8,8 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-test("juice-shop scenario 05", async ({ page }) => {
+// ログイン後に、ユーザープロフィールページにアクセスして、プロフィール画像とユーザー名を更新するシナリオ
+test("access-user-profile-and-update-profile", async ({ page }) => {
   test.setTimeout(60000);
 
   page.on("console", (msg) => {
