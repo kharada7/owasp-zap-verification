@@ -40,8 +40,9 @@ test("juice-shop scenario 05", async ({ page }) => {
   // aria-label が "Show/hide account menu" のボタンをクリックする
   await page.getByRole("button", { name: "Show/hide account menu" }).click();
 
-  // aria-label が "Go to user profile" のボタンをクリックする
-  await page.getByRole("button", { name: "Go to user profile" }).click();
+  // アカウントメニューの "Go to user profile" メニュー項目をクリックする
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.getByRole("menuitem", { name: "Go to user profile" }).click();
 
   // URL が /profile に遷移することを確認する
   await expect(page).toHaveURL(/\/profile$/);
