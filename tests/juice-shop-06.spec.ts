@@ -42,10 +42,12 @@ test("access-support-chat-and-submit-comment", async ({ page }) => {
   await page.getByRole("link", { name: "Go to chatbot page" }).click();
   await expect(page).toHaveURL(/#\/chatbot$/);
 
-  // aria-label が "Text field for a chat message" の input[type=text] 要素にメッセージを入力し、
-  // Enter キーを押して送信する。
-  await page
-    .locator('input[aria-label="Text field for a chat message"][type="text"]')
-    .fill("My name is Jim.");
-  await page.keyboard.press("Enter");
+  // aria-label が "Text field for a chat message" の input 要素を取得する。
+  const chatMessageInput = page.locator(
+    'input[aria-label="Text field for a chat message"]',
+  );
+  // 取得した input 要素に "My name is Jim." という文字列を入力する。
+  await chatMessageInput.fill("My name is Jim.");
+  // 取得した input 要素に対して Enter キーを押す。
+  await chatMessageInput.press("Enter");
 });
