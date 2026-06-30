@@ -41,13 +41,22 @@ test("juice-shop scenario 03", async ({ page }) => {
   await page.getByRole("link", { name: "Go to complain page" }).click();
   await expect(page).toHaveURL(/#\/complain$/);
 
-  await page.locator("textarea[aria-label='Field for entering the complaint']").fill("Too Late! I want my money back!");
+  const complaintText = "Too Late! I want my money back!";
+  const complaintTextarea = page.locator("textarea#complaintMessage[aria-label='Field for entering the complaint']");
+  await expect(complaintTextarea).toHaveCount(1);
+  await expect(complaintTextarea).toBeVisible();
+  await expect(complaintTextarea).toBeEditable();
+  await complaintTextarea.fill(complaintText);
+  await complaintTextarea.blur();
+  await expect(complaintTextarea).toHaveValue(complaintText);
   // input["type=file"] 要素を取得する。
   const fileInput = page.locator('input[type="file"]');
   // ファイルをアップロードする。
-  await fileInput.setInputFiles("tests/files/page.pdf");
+  await fileInput.setInputFiles("tests/files/tiny.pdf");
 
   // aria-label が "Button to send the complaint" の button をクリックする。
-  await page.getByRole("button", { name: "Button to send the complaint" }).click();
+  const sendComplaintButton = page.getByRole("button", { name: "Button to send the complaint" });
+  await expect(sendComplaintButton).toBeEnabled();
+  await sendComplaintButton.click();
 
 });
