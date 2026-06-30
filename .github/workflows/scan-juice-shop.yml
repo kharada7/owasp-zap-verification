@@ -1,4 +1,4 @@
-name: DAST Scan 2
+name: Scan OWASP Juice Shop with ZAP and Playwright
 
 on:
   workflow_dispatch:
