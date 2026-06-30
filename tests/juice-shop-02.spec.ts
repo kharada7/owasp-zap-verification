@@ -54,9 +54,15 @@ test("juice-shop scenario 02", async ({ page }) => {
   // aria-label が "CAPTCHA code which must be solved" の code 要素を取得する。
   const captchaCodeElement = page.locator('code[aria-label="CAPTCHA code which must be solved"]');
   // CAPTCHA 文字列を取得する。
-  const captchaCode = await captchaCodeElement.textContent();
-  // aria-label が "Field for entering the CAPTCHA code" のテキストボックスに CAPTCHA 文字列を入力する。
-  await page.getByRole("textbox", { name: "Field for entering the CAPTCHA code" }).fill("-8");
+  const captchaCode = (await captchaCodeElement.textContent())?.trim();
+  if (!captchaCode) {
+    throw new Error("CAPTCHA code was not rendered on the contact form.");
+  }
+
+  const captchaAnswer = String(Function(`return (${captchaCode})`)());
+
+  // aria-label が "Field for the result of the CAPTCHA code" のテキストボックスに CAPTCHA の計算結果を入力する。
+  await page.getByRole("textbox", { name: "Field for the result of the CAPTCHA code" }).fill(captchaAnswer);
 
   // aria-label が "Button to send the review" のボタンをクリックする。
   await page.getByRole("button", { name: "Button to send the review" }).click();
