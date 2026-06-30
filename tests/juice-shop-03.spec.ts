@@ -41,7 +41,7 @@ test("juice-shop scenario 03", async ({ page }) => {
   await page.getByRole("link", { name: "Go to complain page" }).click();
   await expect(page).toHaveURL(/#\/complain$/);
 
-  await page.getByRole("textbox", { name: "Field for entering the complaint" }).fill("Too Late! I want my money back!");
+  await page.locator("textarea[aria-label='Field for entering the complaint']").fill("Too Late! I want my money back!");
   // input["type=file"] 要素を取得する。
   const fileInput = page.locator('input[type="file"]');
   // ファイルをアップロードする。

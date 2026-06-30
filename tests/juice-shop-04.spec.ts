@@ -8,7 +8,7 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-test("juice-shop scenario 03", async ({ page }) => {
+test("juice-shop scenario 04", async ({ page }) => {
   test.setTimeout(60000);
 
   page.on("console", (msg) => {
@@ -45,8 +45,8 @@ test("juice-shop scenario 03", async ({ page }) => {
   await page.getByRole("button", { name: "Become deluxe member" }).click();
   await expect(page).toHaveURL(/#\/payment\/deluxe$/);
 
-  // ID が "mat-radio-43-input" の input[type=radio] 要素をクリックする。
-  await page.locator("#mat-radio-43-input").click();
+  // ID が "mat-radio-43-input" の input[type=radio] 要素を選択する。
+  await page.locator("#mat-radio-43-input").check();
 
   // ID が "mat-expansion-panel-header-1" の要素をクリックする
   await page.locator("#mat-expansion-panel-header-1").click();
