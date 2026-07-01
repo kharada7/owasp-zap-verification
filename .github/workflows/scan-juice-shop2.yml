@@ -176,6 +176,23 @@ jobs:
             exit 1
           fi
 
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: reports
+          if-no-files-found: error
+
       - name: Fail workflow on Medium/High ZAP risks
         run: |
           set -euo pipefail
@@ -213,23 +230,6 @@ jobs:
               process.exit(1)
             }
           "
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            playwright-report
-            test-results
-
-      - name: Upload ZAP report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report
-          path: reports
-          if-no-files-found: error
 
       - name: Upload runtime logs
         if: always()
