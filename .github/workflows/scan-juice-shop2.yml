@@ -1,0 +1,254 @@
+name: Scan OWASP Juice Shop with ZAP and Playwright 2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  dast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ZAP_PROXY: http://127.0.0.1:8080
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Install Juice Shop dependencies
+        working-directory: ./juice-shop
+        run: npm install
+
+      - name: Start Juice Shop from repository
+        working-directory: ./juice-shop
+        run: |
+          npm start > ../juice-shop.log 2>&1 &
+          echo $! > ../juice-shop.pid
+
+      - name: Wait for Juice Shop
+        run: |
+          timeout 240 bash -c 'until curl -fsS http://127.0.0.1:3000/ >/dev/null; do sleep 5; done'
+
+      - name: Start OWASP ZAP
+        run: |
+          docker run -d \
+            --name zap \
+            --network=host \
+            -u zap \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -daemon \
+            -host 0.0.0.0 \
+            -port 8080 \
+            -config api.disablekey=true \
+            -config api.addrs.addr.name=.* \
+            -config api.addrs.addr.regex=true
+
+      - name: Check ZAP container started
+        run: |
+          sleep 10
+          echo "=== Container Status ==="
+          docker ps | grep zap || (echo "ERROR: ZAP container not found"; docker ps; exit 1)
+          echo ""
+          echo "=== ZAP Logs (first 100 lines) ==="
+          docker logs zap 2>&1 | head -100 || true
+          echo ""
+          echo "=== Network inspection ==="
+          docker inspect zap | grep -A 5 '"Ports"' || true
+
+      - name: Wait for ZAP API
+        run: |
+          echo "Attempting to connect to ZAP API..."
+          for i in {1..60}; do
+            echo "Attempt $i/60..."
+            
+            if response=$(curl -v $ZAP_PROXY/JSON/core/view/version/ 2>&1); then
+              echo "curl succeeded"
+              if echo "$response" | grep -q '"version"'; then
+                echo "ZAP API is ready"
+                exit 0
+              fi
+              echo "Response: $response" | head -10
+            else
+              echo "curl failed with exit code $?"
+            fi
+            
+            sleep 3
+          done
+
+          echo "ZAP API did not become ready in time"
+          echo ""
+          echo "=== Final diagnostics ==="
+          docker ps || true
+          docker logs zap || true
+          curl -v $ZAP_PROXY/ 2>&1 || true
+          exit 1
+
+      - name: Run Playwright via ZAP proxy
+        run: |
+          echo "Running Playwright tests..."
+          npx playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
+          echo "Playwright tests completed with exit code: $?"
+          echo "Checking for playwright-report directory..."
+          ls -la playwright-report/ || echo "Warning: playwright-report not found"
+          
+          echo "Verifying Juice Shop is still running..."
+          curl -fsS http://127.0.0.1:3000/ > /dev/null && echo "✓ Juice Shop is accessible" || echo "✗ Juice Shop is not accessible"
+
+      - name: Generate ZAP report with Automation Framework
+        run: |
+          set -euo pipefail
+
+          mkdir -p reports
+
+          docker cp zap/automation.yaml zap:/tmp/automation.yaml
+          docker exec zap mkdir -p /zap/reports
+
+          # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
+          # --network=host によりコンテナ内の localhost はホストの localhost と同一。
+          echo "Starting ZAP Automation Framework..."
+          response=$(curl -s "$ZAP_PROXY/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
+          echo "API Response: $response"
+          planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4 || echo "")
+          echo "Plan ID: $planId"
+
+          # planId が取得できない場合は即失敗。
+          if [ -z "$planId" ]; then
+            echo "ERROR: Failed to start automation plan (planId is empty)."
+            docker logs zap | tail -200 || true
+            exit 1
+          fi
+
+          # レポート生成完了をポーリングで待機（最大 45 分）。
+          # planId は 0 も有効値になりうるため不正扱いしない。
+          echo "Waiting for ZAP reports to be generated..."
+          generated=false
+          for i in {1..270}; do
+            if docker exec zap sh -c 'test -s /zap/reports/zap-report.html && test -s /zap/reports/zap-report.json'; then
+              echo "Reports are present in container."
+              generated=true
+              break
+            fi
+
+            progress=$(curl -s "$ZAP_PROXY/JSON/automation/view/planProgress/?planId=$planId" || true)
+            echo "Plan Progress $i/270: ${progress:-<empty>}"
+
+            # 明確な失敗状態が返ってきた場合は待機を打ち切る。
+            if echo "$progress" | grep -Eiq '"(status|state|phase)":"(failed|error|aborted|stopped)"'; then
+              echo "ERROR: Automation plan entered a failure state."
+              docker logs zap | tail -300 || true
+              exit 1
+            fi
+            sleep 10
+          done
+
+          if [ "$generated" != "true" ]; then
+            echo "ERROR: ZAP reports were not generated within timeout."
+            echo "=== ZAP logs (last 300 lines) ==="
+            docker logs zap | tail -300 || true
+            exit 1
+          fi
+          
+          echo "Final ZAP Container Logs:"
+          docker logs zap | tail -100
+          
+          # コンテナからレポートをコピー
+          echo "Copying reports from ZAP container..."
+          docker cp zap:/zap/reports/. reports || echo "Warning: Could not copy reports"
+          
+          # レポートが実際に生成されたか確認
+          echo "Checking generated reports:"
+          ls -la reports/
+          find reports -type f \( -name "*.html" -o -name "*.json" \)
+
+          if [ ! -s reports/zap-report.html ] || [ ! -s reports/zap-report.json ]; then
+            echo "ERROR: Required ZAP reports are missing or empty."
+            echo "Expected files: reports/zap-report.html and reports/zap-report.json"
+            exit 1
+          fi
+
+      - name: Fail workflow on Medium/High ZAP risks
+        run: |
+          set -euo pipefail
+
+          if [ ! -s reports/zap-report.json ]; then
+            echo "ERROR: reports/zap-report.json not found or empty."
+            exit 1
+          fi
+
+          node -e "
+            const fs = require('node:fs')
+            const report = JSON.parse(fs.readFileSync('reports/zap-report.json', 'utf8'))
+            const alerts = (report.site || []).flatMap(s => s.alerts || [])
+
+            const isMedium = (a) => {
+              const code = String(a.riskcode ?? '').trim()
+              const desc = String(a.riskdesc ?? '').toLowerCase()
+              return code === '2' || /medium/.test(desc)
+            }
+
+            const isHigh = (a) => {
+              const code = String(a.riskcode ?? '').trim()
+              const desc = String(a.riskdesc ?? '').toLowerCase()
+              return code === '3' || /high/.test(desc)
+            }
+
+            const mediumCount = alerts.filter(isMedium).length
+            const highCount = alerts.filter(isHigh).length
+            const total = mediumCount + highCount
+
+            console.log(`ZAP risk summary: High=${highCount}, Medium=${mediumCount}`)
+
+            if (total > 0) {
+              console.error('ERROR: Medium or High risk findings were detected in ZAP report.')
+              process.exit(1)
+            }
+          "
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: reports
+          if-no-files-found: error
+
+      - name: Upload runtime logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-logs
+          path: |
+            juice-shop.log
+
+      - name: Show container logs
+        if: always()
+        run: |
+          docker logs zap || true
+          tail -n 200 juice-shop.log || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f juice-shop.pid ]; then
+            kill "$(cat juice-shop.pid)" || true
+          fi
+          docker rm -f zap || true
