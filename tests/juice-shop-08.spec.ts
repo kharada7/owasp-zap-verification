@@ -3,14 +3,13 @@ import { login } from "../pages/login";
 import {
   closeBlockingOverlays,
   closeCookieBanner,
-  completeJuiceShopPurchase,
   dismissWelcomeBanner,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-// ログイン後に、商品をカートに入れて購入するシナリオ
-test("add-cart-and-buy", async ({ page }) => {
+// ログイン後に Photo Wall ページにアクセスして画像をアップロードするシナリオ
+test("access-photo-wall-page", async ({ page }) => {
   test.setTimeout(60000);
 
   page.on("console", (msg) => {
@@ -39,10 +38,24 @@ test("add-cart-and-buy", async ({ page }) => {
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
 
-  await completeJuiceShopPurchase(page);
+  await page.getByRole("button", { name: "Open Sidenav" }).click();
+  await page.getByRole("link", { name: "Go to photo wall" }).click();
+  await expect(page).toHaveURL(/#\/photo-wall$/);
 
-  await expect(page).toHaveURL(/#\/order-completion\//);
+  // Photo Wall ページの内容を確認する。
+  await expect(page.getByRole("heading", { name: "Photo Wall" })).toBeVisible();
+
+  // 画像をアップロードする。
+  await page.getByRole("button", { name: "Pick image" }).click();
+  await page.setInputFiles(
+    'input[type="file"]',
+    "tests/files/profile-picture.png",
+  );
+
+  await page.getByRole("textbox", { name: "Caption" }).fill("Nice photo!");
+  await page.getByRole("button", { name: /send submit/i }).click();
+
   await expect(
-    page.getByRole("heading", { name: "Thank you for your purchase!" }),
+    page.getByText("Your image was successfully uploaded."),
   ).toBeVisible();
 });
