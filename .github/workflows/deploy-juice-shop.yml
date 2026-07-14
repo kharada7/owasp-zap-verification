@@ -26,13 +26,13 @@ jobs:
 
       - name: Start Juice Shop from repository
         working-directory: ./juice-shop
-        shell: pwsh
+        shell: powershell
         run: |
           $process = Start-Process -FilePath "npm.cmd" -ArgumentList "start" -WorkingDirectory (Get-Location) -RedirectStandardOutput "..\juice-shop.log" -RedirectStandardError "..\juice-shop-error.log" -PassThru
           Set-Content -Path "..\juice-shop.pid" -Value $process.Id
 
       - name: Wait for Juice Shop
-        shell: pwsh
+        shell: powershell
         run: |
           $deadline = (Get-Date).AddSeconds(240)
           while ((Get-Date) -lt $deadline) {
