@@ -26,10 +26,32 @@ jobs:
 
       - name: Start Juice Shop from repository
         working-directory: ./juice-shop
+        shell: pwsh
         run: |
-          npm start > ../juice-shop.log 2>&1 &
-          echo $! > ../juice-shop.pid
+          $process = Start-Process -FilePath "npm.cmd" -ArgumentList "start" -WorkingDirectory (Get-Location) -RedirectStandardOutput "..\juice-shop.log" -RedirectStandardError "..\juice-shop-error.log" -PassThru
+          Set-Content -Path "..\juice-shop.pid" -Value $process.Id
 
       - name: Wait for Juice Shop
+        shell: pwsh
         run: |
-          timeout 240 bash -c 'until curl -fsS http://127.0.0.1:3000/ >/dev/null; do sleep 5; done'
+          $deadline = (Get-Date).AddSeconds(240)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $response = Invoke-WebRequest -Uri "http://127.0.0.1:3000/"
+              if ($response.StatusCode -eq 200) {
+                exit 0
+              }
+            } catch {
+            }
+
+            Start-Sleep -Seconds 5
+          }
+
+          Write-Error "Juice Shop did not become ready within 240 seconds."
+          if (Test-Path ".\juice-shop.log") {
+            Get-Content ".\juice-shop.log" -Tail 50
+          }
+          if (Test-Path ".\juice-shop-error.log") {
+            Get-Content ".\juice-shop-error.log" -Tail 50
+          }
+          exit 1
