@@ -167,10 +167,10 @@ jobs:
         shell: powershell
         run: |
           Write-Host 'Attempting to connect to ZAP API...'
-          Write-Host 'Timeout window: 180 attempts x 5 seconds (max 900 seconds)'
+          Write-Host 'Timeout window: 60 attempts x 5 seconds (max 300 seconds)'
 
-          for ($i = 1; $i -le 180; $i++) {
-            Write-Host "Attempt $i/180..."
+          for ($i = 1; $i -le 60; $i++) {
+            Write-Host "Attempt $i/60..."
 
             try {
               $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/core/view/version/" -TimeoutSec 5 -ErrorAction Stop
