@@ -439,6 +439,117 @@ jobs:
       - name: Run Playwright via ZAP proxy
         shell: powershell
         run: |
+          Write-Host '=== Preflight: ensure ZAP proxy is alive ==='
+
+          function Find-ZapBat {
+            $zapFromPath = Get-Command zap.bat -ErrorAction SilentlyContinue
+            if ($zapFromPath) {
+              return $zapFromPath.Source
+            }
+
+            $candidatePaths = @(
+              'C:\Program Files\ZAP\Zed Attack Proxy\zap.bat',
+              'C:\Program Files (x86)\ZAP\Zed Attack Proxy\zap.bat'
+            )
+
+            foreach ($candidate in $candidatePaths) {
+              if (Test-Path $candidate) {
+                return $candidate
+              }
+            }
+
+            return $null
+          }
+
+          function Wait-ZapApiReady {
+            param(
+              [int]$MaxAttempts = 24
+            )
+
+            for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+              $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($listener) {
+                Set-Content -Path '.\zap.pid' -Value $listener.OwningProcess
+              }
+
+              $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 --url 'http://127.0.0.1:8080/JSON/core/view/version/'
+              if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($raw)) {
+                try {
+                  $response = $raw | ConvertFrom-Json
+                  if ($response.version) {
+                    Write-Host "ZAP preflight API ready. Version: $($response.version)"
+                    return $true
+                  }
+                } catch {
+                  Write-Host "Preflight API parse failed on attempt $attempt: $($_.Exception.Message)"
+                }
+              }
+
+              Write-Host "Preflight probe $attempt/$MaxAttempts: ZAP API not ready yet."
+              Start-Sleep -Seconds 5
+            }
+
+            return $false
+          }
+
+          # Clear proxy env vars so local preflight checks always hit loopback directly.
+          $env:HTTP_PROXY = ''
+          $env:HTTPS_PROXY = ''
+          $env:http_proxy = ''
+          $env:https_proxy = ''
+          $env:NO_PROXY = '127.0.0.1,localhost'
+          $env:no_proxy = '127.0.0.1,localhost'
+
+          $zapHealthy = Wait-ZapApiReady -MaxAttempts 6
+          if (-not $zapHealthy) {
+            Write-Warning 'ZAP is not healthy before Playwright. Attempting one-time restart.'
+
+            $zapCommand = Find-ZapBat
+            if (-not $zapCommand) {
+              Write-Error 'Could not find zap.bat for preflight restart.'
+              if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
+              if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
+              exit 1
+            }
+
+            $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
+            $zapArgs = @(
+              '-daemon',
+              '-host', '0.0.0.0',
+              '-port', '8080',
+              '-config', 'api.disablekey=true',
+              '-config', 'api.addrs.addr.name=.*',
+              '-config', 'api.addrs.addr.regex=true'
+            )
+
+            $oldPid = $null
+            if (Test-Path '.\zap.pid') {
+              $oldPid = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
+            }
+            if ($oldPid) {
+              Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+            }
+
+            $restart = Start-Process -FilePath $zapCommand -ArgumentList $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+            Set-Content -Path '.\zap-launcher.pid' -Value $restart.Id
+            Set-Content -Path '.\zap.pid' -Value $restart.Id
+            Set-Content -Path '.\zap-startup.mode' -Value 'preflight-restart-zap.bat'
+            Write-Host "Restarted ZAP launcher process ID: $($restart.Id)"
+
+            $zapHealthy = Wait-ZapApiReady -MaxAttempts 24
+            if (-not $zapHealthy) {
+              Write-Error 'ZAP API was not reachable before Playwright, even after restart.'
+              Write-Host '=== netstat for local 8080 ==='
+              Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess | Format-Table -AutoSize
+              if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
+              if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
+              exit 1
+            }
+          }
+
+          $env:ZAP_PROXY = 'http://127.0.0.1:8080'
+          Write-Host "Using ZAP_PROXY=$env:ZAP_PROXY"
+
           Write-Host 'Running Playwright tests...'
           npx.cmd playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
           Write-Host "Playwright tests completed with exit code: $LASTEXITCODE"
