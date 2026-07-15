@@ -275,6 +275,67 @@ jobs:
           Write-Host 'ZAP API candidate URLs:'
           $candidateUrls | ForEach-Object { Write-Host "- $_" }
 
+          $zapRestartAttempted = $false
+          function Restart-ZapByBat {
+            Write-Warning 'No local listener on 8080. Attempting one-time ZAP restart via zap.bat.'
+
+            $zapCommand = $null
+            $zapFromPath = Get-Command zap.bat -ErrorAction SilentlyContinue
+            if ($zapFromPath) {
+              $zapCommand = $zapFromPath.Source
+            }
+
+            if (-not $zapCommand) {
+              $candidatePaths = @(
+                'C:\Program Files\ZAP\Zed Attack Proxy\zap.bat',
+                'C:\Program Files (x86)\ZAP\Zed Attack Proxy\zap.bat'
+              )
+              foreach ($candidate in $candidatePaths) {
+                if (Test-Path $candidate) {
+                  $zapCommand = $candidate
+                  break
+                }
+              }
+            }
+
+            if (-not $zapCommand) {
+              Write-Error 'Restart failed: zap.bat was not found.'
+              return $false
+            }
+
+            $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
+            $zapArgs = @(
+              '-daemon',
+              '-host', '0.0.0.0',
+              '-port', '8080',
+              '-config', 'api.disablekey=true',
+              '-config', 'api.addrs.addr.name=.*',
+              '-config', 'api.addrs.addr.regex=true'
+            )
+
+            $restartProcess = Start-Process -FilePath $zapCommand -ArgumentList $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+            Set-Content -Path '.\zap-launcher.pid' -Value $restartProcess.Id
+            Set-Content -Path '.\zap.pid' -Value $restartProcess.Id
+            Set-Content -Path '.\zap-startup.mode' -Value 'restart-zap.bat'
+            Write-Host "Restarted ZAP launcher process ID: $($restartProcess.Id)"
+
+            for ($probe = 1; $probe -le 18; $probe++) {
+              $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($listener) {
+                Set-Content -Path '.\zap.pid' -Value $listener.OwningProcess
+                Write-Host "Local listener recovered after restart. PID: $($listener.OwningProcess)"
+                return $true
+              }
+
+              Start-Sleep -Seconds 5
+            }
+
+            Write-Error 'Restart attempt did not recover local listener on port 8080.'
+            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 100 }
+            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 100 }
+            return $false
+          }
+
           $resolvedZapProxy = $null
 
           for ($i = 1; $i -le 60; $i++) {
@@ -310,6 +371,17 @@ jobs:
                 Add-Content -Path $env:GITHUB_ENV -Value "ZAP_PROXY=$resolvedZapProxy"
                 Write-Host "Persisted ZAP_PROXY=$resolvedZapProxy for subsequent steps."
                 exit 0
+              }
+
+              if (-not $zapRestartAttempted -and $i -ge 3) {
+                $localListener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+                if (-not $localListener) {
+                  $zapRestartAttempted = $true
+                  $restartOk = Restart-ZapByBat
+                  if (-not $restartOk) {
+                    Write-Warning 'ZAP restart failed or listener was not recovered. Continuing retries for diagnostics.'
+                  }
+                }
               }
 
               if (($i % 15) -eq 0) {
