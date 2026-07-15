@@ -195,7 +195,7 @@ jobs:
               }
 
               if ($statusCode) {
-                Write-Host "Attempt $i failed with HTTP status $statusCode: $message"
+                Write-Host "Attempt $i failed with HTTP status ${statusCode}: $message"
               } else {
                 Write-Host "Attempt $i failed: $message"
               }
