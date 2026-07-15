@@ -48,6 +48,34 @@ jobs:
       - name: Install Playwright browsers
         run: npx.cmd playwright install --with-deps
 
+      - name: Stop stale listeners on 8080
+        shell: powershell
+        run: |
+          Write-Host '=== Stop stale listeners on port 8080 ==='
+
+          $listenerLines = netstat -ano | Select-String ':8080\s+.*LISTENING\s+(\d+)$'
+          if (-not $listenerLines) {
+            Write-Host 'No listener found on port 8080.'
+            exit 0
+          }
+
+          foreach ($line in $listenerLines) {
+            $match = [regex]::Match($line.Line, '(\d+)$')
+            if ($match.Success) {
+              $portOwnerProcessId = $match.Groups[1].Value
+              Write-Host "Stopping process on port 8080: PID $portOwnerProcessId"
+              Stop-Process -Id $portOwnerProcessId -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          Start-Sleep -Seconds 2
+          $remaining = netstat -ano | Select-String ':8080\s+.*LISTENING\s+(\d+)$'
+          if ($remaining) {
+            Write-Error 'Port 8080 is still in use after cleanup attempt.'
+            $remaining | ForEach-Object { $_.Line }
+            exit 1
+          }
+
       - name: Start OWASP ZAP
         shell: powershell
         run: |
@@ -139,9 +167,10 @@ jobs:
         shell: powershell
         run: |
           Write-Host 'Attempting to connect to ZAP API...'
+          Write-Host 'Timeout window: 180 attempts x 5 seconds (max 900 seconds)'
 
-          for ($i = 1; $i -le 60; $i++) {
-            Write-Host "Attempt $i/60..."
+          for ($i = 1; $i -le 180; $i++) {
+            Write-Host "Attempt $i/180..."
 
             try {
               $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/core/view/version/" -TimeoutSec 5 -ErrorAction Stop
@@ -158,9 +187,31 @@ jobs:
                 exit 0
               }
             } catch {
+              $message = $_.Exception.Message
+              $statusCode = $null
+
+              if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+              }
+
+              if ($statusCode) {
+                Write-Host "Attempt $i failed with HTTP status $statusCode: $message"
+              } else {
+                Write-Host "Attempt $i failed: $message"
+              }
+
+              if (($i % 15) -eq 0) {
+                Write-Host 'Current port 8080 state:'
+                $portState = netstat -ano | Select-String ':8080'
+                if ($portState) {
+                  $portState | ForEach-Object { $_.Line }
+                } else {
+                  Write-Host 'No socket activity on port 8080.'
+                }
+              }
             }
 
-            Start-Sleep -Seconds 3
+            Start-Sleep -Seconds 5
           }
 
           Write-Error 'ZAP API did not become ready in time.'
