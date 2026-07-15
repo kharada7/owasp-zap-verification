@@ -204,7 +204,9 @@ jobs:
           $candidateUrls = @('http://127.0.0.1:8080', 'http://localhost:8080')
           $localIps = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             Where-Object {
+              -not [string]::IsNullOrWhiteSpace($_.IPAddress) -and
               $_.IPAddress -ne '127.0.0.1' -and
+              $_.IPAddress -match '^\d{1,3}(\.\d{1,3}){3}$' -and
               $_.IPAddress -notlike '169.254.*' -and
               $_.PrefixOrigin -ne 'WellKnown'
             } |
@@ -225,8 +227,17 @@ jobs:
 
             try {
               foreach ($baseUrl in $candidateUrls) {
+                if ([string]::IsNullOrWhiteSpace($baseUrl) -or $baseUrl -notmatch '^https?://[^\s]+$') {
+                  Write-Warning "Skipping invalid candidate URL: '$baseUrl'"
+                  continue
+                }
+
                 $versionUrl = "$baseUrl/JSON/core/view/version/"
-                $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 $versionUrl
+                $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 --url $versionUrl
+                if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($raw)) {
+                  continue
+                }
+
                 $response = $raw | ConvertFrom-Json
                 if ($response.version) {
                   $resolvedZapProxy = $baseUrl
@@ -244,6 +255,16 @@ jobs:
                 Add-Content -Path $env:GITHUB_ENV -Value "ZAP_PROXY=$resolvedZapProxy"
                 Write-Host "Persisted ZAP_PROXY=$resolvedZapProxy for subsequent steps."
                 exit 0
+              }
+
+              if (($i % 15) -eq 0) {
+                Write-Host 'Current local LISTEN state for 8080:'
+                $localPortState = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+                if ($localPortState) {
+                  $localPortState | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
+                } else {
+                  Write-Host 'No local LISTEN socket on port 8080.'
+                }
               }
             } catch {
               $message = $_.Exception.Message
