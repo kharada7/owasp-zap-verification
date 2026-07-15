@@ -200,21 +200,49 @@ jobs:
           $env:NO_PROXY = '127.0.0.1,localhost'
           $env:no_proxy = '127.0.0.1,localhost'
           Write-Host "NO_PROXY: $env:NO_PROXY"
-          $versionUrl = "$env:ZAP_PROXY/JSON/core/view/version/"
+
+          $candidateUrls = @('http://127.0.0.1:8080', 'http://localhost:8080')
+          $localIps = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object {
+              $_.IPAddress -ne '127.0.0.1' -and
+              $_.IPAddress -notlike '169.254.*' -and
+              $_.PrefixOrigin -ne 'WellKnown'
+            } |
+            Select-Object -ExpandProperty IPAddress -Unique
+
+          foreach ($ip in $localIps) {
+            $candidateUrls += "http://$ip:8080"
+          }
+
+          $candidateUrls = $candidateUrls | Select-Object -Unique
+          Write-Host 'ZAP API candidate URLs:'
+          $candidateUrls | ForEach-Object { Write-Host "- $_" }
+
+          $resolvedZapProxy = $null
 
           for ($i = 1; $i -le 60; $i++) {
             Write-Host "Attempt $i/60..."
 
             try {
-              $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 $versionUrl
-              $response = $raw | ConvertFrom-Json
-              if ($response.version) {
-                $listenerLine = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($listenerLine) {
-                  Set-Content -Path '.\zap.pid' -Value $listenerLine.OwningProcess
-                  Write-Host "Recorded ZAP listener process ID: $($listenerLine.OwningProcess)"
+              foreach ($baseUrl in $candidateUrls) {
+                $versionUrl = "$baseUrl/JSON/core/view/version/"
+                $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 $versionUrl
+                $response = $raw | ConvertFrom-Json
+                if ($response.version) {
+                  $resolvedZapProxy = $baseUrl
+                  $listenerLine = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+                  if ($listenerLine) {
+                    Set-Content -Path '.\zap.pid' -Value $listenerLine.OwningProcess
+                    Write-Host "Recorded ZAP listener process ID: $($listenerLine.OwningProcess)"
+                  }
+                  Write-Host "ZAP API is ready. Version: $($response.version) via $baseUrl"
+                  break
                 }
-                Write-Host "ZAP API is ready. Version: $($response.version)"
+              }
+
+              if ($resolvedZapProxy) {
+                Add-Content -Path $env:GITHUB_ENV -Value "ZAP_PROXY=$resolvedZapProxy"
+                Write-Host "Persisted ZAP_PROXY=$resolvedZapProxy for subsequent steps."
                 exit 0
               }
             } catch {
