@@ -3,9 +3,12 @@ name: Scan OWASP Juice Shop with ZAP and Playwright
 on:
   workflow_dispatch:
 
+# セルフホストマシンに ZAP および Playwright をインストールし、
+# OWASP Juice Shop に対して DAST を行うワークフローです。
+
 jobs:
   dast:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 90
     env:
       ZAP_PROXY: http://127.0.0.1:8080
@@ -14,167 +17,223 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Install root dependencies
         run: npm install
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Install Juice Shop dependencies
-        working-directory: ./juice-shop
-        run: npm install
-
-      - name: Start Juice Shop from repository
-        working-directory: ./juice-shop
-        run: |
-          npm start > ../juice-shop.log 2>&1 &
-          echo $! > ../juice-shop.pid
-
-      - name: Wait for Juice Shop
-        run: |
-          timeout 240 bash -c 'until curl -fsS http://127.0.0.1:3000/ >/dev/null; do sleep 5; done'
-
       - name: Start OWASP ZAP
+        shell: powershell
         run: |
-          docker run -d \
-            --name zap \
-            --network=host \
-            -u zap \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap.sh -daemon \
-            -host 0.0.0.0 \
-            -port 8080 \
-            -config api.disablekey=true \
-            -config api.addrs.addr.name=.* \
-            -config api.addrs.addr.regex=true
+          $zapCommand = $null
 
-      - name: Check ZAP container started
+          $zapFromPath = Get-Command zap.bat -ErrorAction SilentlyContinue
+          if ($zapFromPath) {
+            $zapCommand = $zapFromPath.Source
+          }
+
+          if (-not $zapCommand) {
+            $candidatePaths = @(
+              'C:\Program Files\OWASP\Zed Attack Proxy\zap.bat',
+              'C:\Program Files (x86)\OWASP\Zed Attack Proxy\zap.bat'
+            )
+            foreach ($candidate in $candidatePaths) {
+              if (Test-Path $candidate) {
+                $zapCommand = $candidate
+                break
+              }
+            }
+          }
+
+          if (-not $zapCommand) {
+            Write-Error 'Could not find installed OWASP ZAP (zap.bat). Add it to PATH or install it in the default location.'
+            exit 1
+          }
+
+          $process = Start-Process -FilePath $zapCommand -ArgumentList @(
+            '-daemon',
+            '-host', '0.0.0.0',
+            '-port', '8080',
+            '-config', 'api.disablekey=true',
+            '-config', 'api.addrs.addr.name=.*',
+            '-config', 'api.addrs.addr.regex=true'
+          ) -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+
+          Set-Content -Path '.\zap.pid' -Value $process.Id
+          Write-Host "Started ZAP process ID: $($process.Id)"
+
+      - name: Check ZAP process started
+        shell: powershell
         run: |
-          sleep 10
-          echo "=== Container Status ==="
-          docker ps | grep zap || (echo "ERROR: ZAP container not found"; docker ps; exit 1)
-          echo ""
-          echo "=== ZAP Logs (first 100 lines) ==="
-          docker logs zap 2>&1 | head -100 || true
-          echo ""
-          echo "=== Network inspection ==="
-          docker inspect zap | grep -A 5 '"Ports"' || true
+          Start-Sleep -Seconds 10
+          Write-Host '=== ZAP Process Check ==='
+
+          if (-not (Test-Path '.\zap.pid')) {
+            Write-Error 'zap.pid not found.'
+            exit 1
+          }
+
+          $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
+          if (-not $zapProcessId) {
+            Write-Error 'Failed to read zap.pid.'
+            exit 1
+          }
+
+          $process = Get-Process -Id $zapProcessId -ErrorAction SilentlyContinue
+          if ($null -eq $process) {
+            Write-Error "ZAP process is not running (PID: $zapProcessId)."
+            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 100 }
+            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 100 }
+            exit 1
+          }
+
+          Write-Host "ZAP process is running (PID: $zapProcessId)."
+          Write-Host ''
+          Write-Host '=== Port 8080 Check ==='
+          netstat -ano | Select-String ':8080' | ForEach-Object { $_.Line }
 
       - name: Wait for ZAP API
+        shell: powershell
         run: |
-          echo "Attempting to connect to ZAP API..."
-          for i in {1..60}; do
-            echo "Attempt $i/60..."
-            
-            if response=$(curl -v $ZAP_PROXY/JSON/core/view/version/ 2>&1); then
-              echo "curl succeeded"
-              if echo "$response" | grep -q '"version"'; then
-                echo "ZAP API is ready"
-                exit 0
-              fi
-              echo "Response: $response" | head -10
-            else
-              echo "curl failed with exit code $?"
-            fi
-            
-            sleep 3
-          done
+          Write-Host 'Attempting to connect to ZAP API...'
 
-          echo "ZAP API did not become ready in time"
-          echo ""
-          echo "=== Final diagnostics ==="
-          docker ps || true
-          docker logs zap || true
-          curl -v $ZAP_PROXY/ 2>&1 || true
+          for ($i = 1; $i -le 60; $i++) {
+            Write-Host "Attempt $i/60..."
+
+            if (Test-Path '.\zap.pid') {
+              $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
+              if ($zapProcessId -and $null -eq (Get-Process -Id $zapProcessId -ErrorAction SilentlyContinue)) {
+                Write-Error 'ZAP process exited before API became ready.'
+                if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 150 }
+                if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 150 }
+                exit 1
+              }
+            }
+
+            try {
+              $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/core/view/version/" -TimeoutSec 5 -ErrorAction Stop
+              if ($response.version) {
+                Write-Host "ZAP API is ready. Version: $($response.version)"
+                exit 0
+              }
+            } catch {
+            }
+
+            Start-Sleep -Seconds 3
+          }
+
+          Write-Error 'ZAP API did not become ready in time.'
+          if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
+          if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
           exit 1
 
       - name: Run Playwright via ZAP proxy
+        shell: powershell
         run: |
-          echo "Running Playwright tests..."
+          Write-Host 'Running Playwright tests...'
           npx playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
-          echo "Playwright tests completed with exit code: $?"
-          echo "Checking for playwright-report directory..."
-          ls -la playwright-report/ || echo "Warning: playwright-report not found"
-          
-          echo "Verifying Juice Shop is still running..."
-          curl -fsS http://127.0.0.1:3000/ > /dev/null && echo "✓ Juice Shop is accessible" || echo "✗ Juice Shop is not accessible"
+          Write-Host "Playwright tests completed with exit code: $LASTEXITCODE"
+
+          Write-Host 'Checking for playwright-report directory...'
+          if (Test-Path '.\playwright-report') {
+            Get-ChildItem '.\playwright-report' -Force
+          } else {
+            Write-Warning 'playwright-report not found'
+          }
+
+          Write-Host 'Verifying Juice Shop is still running...'
+          try {
+            $null = Invoke-WebRequest -Uri 'http://127.0.0.1:3000/' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+            Write-Host 'Juice Shop is accessible'
+          } catch {
+            Write-Warning 'Juice Shop is not accessible'
+          }
 
       - name: Generate ZAP report with Automation Framework
+        shell: powershell
         run: |
-          set -euo pipefail
+          $reportsDir = Join-Path $PWD 'reports'
+          New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null
 
-          mkdir -p reports
-
-          docker cp zap/automation.yaml zap:/tmp/automation.yaml
-          docker exec zap mkdir -p /zap/reports
-
-          # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
-          # --network=host によりコンテナ内の localhost はホストの localhost と同一。
-          echo "Starting ZAP Automation Framework..."
-          response=$(curl -s "$ZAP_PROXY/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
-          echo "API Response: $response"
-          planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4 || echo "")
-          echo "Plan ID: $planId"
-
-          # planId が取得できない場合は即失敗。
-          if [ -z "$planId" ]; then
-            echo "ERROR: Failed to start automation plan (planId is empty)."
-            docker logs zap | tail -200 || true
+          $automationTemplate = Join-Path $PWD 'zap\automation.yaml'
+          if (-not (Test-Path $automationTemplate)) {
+            Write-Error "Automation plan file not found: $automationTemplate"
             exit 1
-          fi
+          }
 
-          # レポート生成完了をポーリングで待機（最大 45 分）。
-          # planId は 0 も有効値になりうるため不正扱いしない。
-          echo "Waiting for ZAP reports to be generated..."
-          generated=false
-          for i in {1..270}; do
-            if docker exec zap sh -c 'test -s /zap/reports/zap-report.html && test -s /zap/reports/zap-report.json'; then
-              echo "Reports are present in container."
-              generated=true
+          $hostReportDir = $reportsDir -replace '\\', '/'
+          $automationRunFile = Join-Path $env:RUNNER_TEMP 'automation-host.yaml'
+
+          $automationYaml = Get-Content -Path $automationTemplate -Raw
+          $automationYaml = $automationYaml -replace 'reportDir:\s*/zap/reports', "reportDir: '$hostReportDir'"
+          Set-Content -Path $automationRunFile -Value $automationYaml
+
+          Write-Host "Starting ZAP Automation Framework with plan: $automationRunFile"
+          $planPathForApi = [uri]::EscapeDataString(($automationRunFile -replace '\\', '/'))
+          $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/automation/action/runPlan/?filePath=$planPathForApi" -ErrorAction Stop
+          $responseJson = $response | ConvertTo-Json -Depth 10 -Compress
+          Write-Host "API Response: $responseJson"
+
+          $planId = "$($response.planId)"
+          Write-Host "Plan ID: $planId"
+          if ([string]::IsNullOrWhiteSpace($planId)) {
+            Write-Error 'Failed to start automation plan (planId is empty).'
+            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 300 }
+            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 300 }
+            exit 1
+          }
+
+          Write-Host 'Waiting for ZAP reports to be generated...'
+          $generated = $false
+          for ($i = 1; $i -le 270; $i++) {
+            $htmlReport = Join-Path $reportsDir 'zap-report.html'
+            $jsonReport = Join-Path $reportsDir 'zap-report.json'
+
+            if ((Test-Path $htmlReport) -and (Test-Path $jsonReport) -and ((Get-Item $htmlReport).Length -gt 0) -and ((Get-Item $jsonReport).Length -gt 0)) {
+              Write-Host 'Reports are present on host filesystem.'
+              $generated = $true
               break
-            fi
+            }
 
-            progress=$(curl -s "$ZAP_PROXY/JSON/automation/view/planProgress/?planId=$planId" || true)
-            echo "Plan Progress $i/270: ${progress:-<empty>}"
+            try {
+              $progress = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/automation/view/planProgress/?planId=$planId" -ErrorAction Stop
+              $progressJson = $progress | ConvertTo-Json -Depth 10 -Compress
+            } catch {
+              $progressJson = '<empty>'
+            }
+            Write-Host "Plan Progress $i/270: $progressJson"
 
-            # 明確な失敗状態が返ってきた場合は待機を打ち切る。
-            if echo "$progress" | grep -Eiq '"(status|state|phase)":"(failed|error|aborted|stopped)"'; then
-              echo "ERROR: Automation plan entered a failure state."
-              docker logs zap | tail -300 || true
+            if ($progressJson -match '"(status|state|phase)":"(failed|error|aborted|stopped)"') {
+              Write-Error 'Automation plan entered a failure state.'
+              if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 300 }
+              if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 300 }
               exit 1
-            fi
-            sleep 10
-          done
+            }
 
-          if [ "$generated" != "true" ]; then
-            echo "ERROR: ZAP reports were not generated within timeout."
-            echo "=== ZAP logs (last 300 lines) ==="
-            docker logs zap | tail -300 || true
-            exit 1
-          fi
-          
-          echo "Final ZAP Container Logs:"
-          docker logs zap | tail -100
-          
-          # コンテナからレポートをコピー
-          echo "Copying reports from ZAP container..."
-          docker cp zap:/zap/reports/. reports || echo "Warning: Could not copy reports"
-          
-          # レポートが実際に生成されたか確認
-          echo "Checking generated reports:"
-          ls -la reports/
-          find reports -type f \( -name "*.html" -o -name "*.json" \)
+            Start-Sleep -Seconds 10
+          }
 
-          if [ ! -s reports/zap-report.html ] || [ ! -s reports/zap-report.json ]; then
-            echo "ERROR: Required ZAP reports are missing or empty."
-            echo "Expected files: reports/zap-report.html and reports/zap-report.json"
+          if (-not $generated) {
+            Write-Error 'ZAP reports were not generated within timeout.'
+            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 300 }
+            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 300 }
             exit 1
-          fi
+          }
+
+          Write-Host 'Checking generated reports:'
+          Get-ChildItem -Path $reportsDir -File
+
+          $requiredReports = @(
+            (Join-Path $reportsDir 'zap-report.html'),
+            (Join-Path $reportsDir 'zap-report.json')
+          )
+          foreach ($file in $requiredReports) {
+            if (-not (Test-Path $file) -or (Get-Item $file).Length -eq 0) {
+              Write-Error "Required ZAP report is missing or empty: $file"
+              exit 1
+            }
+          }
 
       - name: Upload Playwright report
         if: always()
@@ -200,17 +259,31 @@ jobs:
           name: runtime-logs
           path: |
             juice-shop.log
+            zap.log
+            zap-error.log
 
-      - name: Show container logs
+      - name: Show runtime logs
         if: always()
+        shell: powershell
         run: |
-          docker logs zap || true
-          tail -n 200 juice-shop.log || true
+          if (Test-Path '.\juice-shop.log') { Get-Content '.\juice-shop.log' -Tail 200 }
+          if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
+          if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
 
       - name: Cleanup
         if: always()
+        shell: powershell
         run: |
-          if [ -f juice-shop.pid ]; then
-            kill "$(cat juice-shop.pid)" || true
-          fi
-          docker rm -f zap || true
+          if (Test-Path '.\juice-shop.pid') {
+            $juiceShopPid = Get-Content '.\juice-shop.pid' -ErrorAction SilentlyContinue
+            if ($juiceShopPid) {
+              Stop-Process -Id $juiceShopPid -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          if (Test-Path '.\zap.pid') {
+            $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
+            if ($zapProcessId) {
+              Stop-Process -Id $zapProcessId -Force -ErrorAction SilentlyContinue
+            }
+          }
