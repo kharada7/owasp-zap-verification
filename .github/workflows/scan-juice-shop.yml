@@ -117,6 +117,25 @@ jobs:
           Set-Content -Path '.\zap.pid' -Value $process.Id
           Write-Host "Started ZAP launcher process ID: $($process.Id)"
 
+          Start-Sleep -Seconds 5
+          $launcherAlive = $null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)
+          $localListener = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$' | Select-Object -First 1
+
+          if ($localListener) {
+            $match = [regex]::Match($localListener.Line, '(\d+)\s*$')
+            if ($match.Success) {
+              Set-Content -Path '.\zap.pid' -Value $match.Groups[1].Value
+              Write-Host "Local listener detected on startup check. PID: $($match.Groups[1].Value)"
+            }
+          }
+
+          if (-not $launcherAlive -and -not $localListener) {
+            Write-Error 'ZAP launcher exited quickly and no local listener on 127.0.0.1:8080/0.0.0.0:8080 was found.'
+            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 120 }
+            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 120 }
+            exit 1
+          }
+
       - name: Check ZAP process started
         shell: powershell
         run: |
@@ -135,8 +154,8 @@ jobs:
           }
 
           Write-Host ''
-          Write-Host '=== Port 8080 Check ==='
-          $portLines = netstat -ano | Select-String ':8080\s+.*(LISTENING|ESTABLISHED)\s+(\d+)$'
+          Write-Host '=== Local LISTEN check for 8080 ==='
+          $portLines = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$'
           $portLines | ForEach-Object { $_.Line }
 
           $listenerPid = $null
@@ -169,13 +188,22 @@ jobs:
           Write-Host 'Attempting to connect to ZAP API...'
           Write-Host 'Timeout window: 60 attempts x 5 seconds (max 300 seconds)'
 
+          # Ensure localhost API checks do not go through corporate/global proxy.
+          $env:HTTP_PROXY = ''
+          $env:HTTPS_PROXY = ''
+          $env:http_proxy = ''
+          $env:https_proxy = ''
+          $env:NO_PROXY = '127.0.0.1,localhost'
+          $env:no_proxy = '127.0.0.1,localhost'
+          Write-Host "NO_PROXY: $env:NO_PROXY"
+
           for ($i = 1; $i -le 60; $i++) {
             Write-Host "Attempt $i/60..."
 
             try {
               $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/core/view/version/" -TimeoutSec 5 -ErrorAction Stop
               if ($response.version) {
-                $listenerLine = netstat -ano | Select-String ':8080\s+.*LISTENING\s+(\d+)$' | Select-Object -First 1
+                $listenerLine = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$' | Select-Object -First 1
                 if ($listenerLine) {
                   $match = [regex]::Match($listenerLine.Line, '(\d+)$')
                   if ($match.Success) {
@@ -201,12 +229,20 @@ jobs:
               }
 
               if (($i % 15) -eq 0) {
-                Write-Host 'Current port 8080 state:'
-                $portState = netstat -ano | Select-String ':8080'
-                if ($portState) {
-                  $portState | ForEach-Object { $_.Line }
+                Write-Host 'Current local LISTEN state for 8080:'
+                $localPortState = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$'
+                if ($localPortState) {
+                  $localPortState | ForEach-Object { $_.Line }
                 } else {
-                  Write-Host 'No socket activity on port 8080.'
+                  Write-Host 'No local LISTEN socket on port 8080.'
+                }
+
+                Write-Host 'Current outbound connections to remote :8080 (diagnostic):'
+                $remotePortState = netstat -ano | Select-String '^\s*TCP\s+\S+:\d+\s+\d+\.\d+\.\d+\.\d+:8080\s+'
+                if ($remotePortState) {
+                  $remotePortState | ForEach-Object { $_.Line }
+                } else {
+                  Write-Host 'No outbound connection to remote :8080 observed.'
                 }
               }
             }
