@@ -85,8 +85,9 @@ jobs:
             '-config', 'api.addrs.addr.regex=true'
           ) -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
 
+          Set-Content -Path '.\zap-launcher.pid' -Value $process.Id
           Set-Content -Path '.\zap.pid' -Value $process.Id
-          Write-Host "Started ZAP process ID: $($process.Id)"
+          Write-Host "Started ZAP launcher process ID: $($process.Id)"
 
       - name: Check ZAP process started
         shell: powershell
@@ -94,29 +95,45 @@ jobs:
           Start-Sleep -Seconds 10
           Write-Host '=== ZAP Process Check ==='
 
-          if (-not (Test-Path '.\zap.pid')) {
-            Write-Error 'zap.pid not found.'
-            exit 1
+          $launcherProcessId = $null
+          if (Test-Path '.\zap-launcher.pid') {
+            $launcherProcessId = Get-Content '.\zap-launcher.pid' -ErrorAction SilentlyContinue
           }
 
-          $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
-          if (-not $zapProcessId) {
-            Write-Error 'Failed to read zap.pid.'
-            exit 1
+          $launcherAlive = $false
+          if ($launcherProcessId) {
+            $launcherAlive = $null -ne (Get-Process -Id $launcherProcessId -ErrorAction SilentlyContinue)
+            Write-Host "Launcher PID: $launcherProcessId (alive=$launcherAlive)"
           }
 
-          $process = Get-Process -Id $zapProcessId -ErrorAction SilentlyContinue
-          if ($null -eq $process) {
-            Write-Error "ZAP process is not running (PID: $zapProcessId)."
+          Write-Host ''
+          Write-Host '=== Port 8080 Check ==='
+          $portLines = netstat -ano | Select-String ':8080\s+.*(LISTENING|ESTABLISHED)\s+(\d+)$'
+          $portLines | ForEach-Object { $_.Line }
+
+          $listenerPid = $null
+          foreach ($line in $portLines) {
+            $match = [regex]::Match($line.Line, '(\d+)$')
+            if ($match.Success) {
+              $listenerPid = $match.Groups[1].Value
+              break
+            }
+          }
+
+          if ($listenerPid) {
+            Set-Content -Path '.\zap.pid' -Value $listenerPid
+            Write-Host "Detected ZAP listener process ID: $listenerPid"
+            exit 0
+          }
+
+          if (-not $launcherAlive) {
+            Write-Error 'ZAP launcher has exited and no listener was found on port 8080.'
             if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 100 }
             if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 100 }
             exit 1
           }
 
-          Write-Host "ZAP process is running (PID: $zapProcessId)."
-          Write-Host ''
-          Write-Host '=== Port 8080 Check ==='
-          netstat -ano | Select-String ':8080' | ForEach-Object { $_.Line }
+          Write-Host 'Launcher is alive; continuing to API readiness check.'
 
       - name: Wait for ZAP API
         shell: powershell
@@ -126,19 +143,17 @@ jobs:
           for ($i = 1; $i -le 60; $i++) {
             Write-Host "Attempt $i/60..."
 
-            if (Test-Path '.\zap.pid') {
-              $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
-              if ($zapProcessId -and $null -eq (Get-Process -Id $zapProcessId -ErrorAction SilentlyContinue)) {
-                Write-Error 'ZAP process exited before API became ready.'
-                if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 150 }
-                if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 150 }
-                exit 1
-              }
-            }
-
             try {
               $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/core/view/version/" -TimeoutSec 5 -ErrorAction Stop
               if ($response.version) {
+                $listenerLine = netstat -ano | Select-String ':8080\s+.*LISTENING\s+(\d+)$' | Select-Object -First 1
+                if ($listenerLine) {
+                  $match = [regex]::Match($listenerLine.Line, '(\d+)$')
+                  if ($match.Success) {
+                    Set-Content -Path '.\zap.pid' -Value $match.Groups[1].Value
+                    Write-Host "Recorded ZAP listener process ID: $($match.Groups[1].Value)"
+                  }
+                }
                 Write-Host "ZAP API is ready. Version: $($response.version)"
                 exit 0
               }
@@ -310,5 +325,12 @@ jobs:
             $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
             if ($zapProcessId) {
               Stop-Process -Id $zapProcessId -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          if (Test-Path '.\zap-launcher.pid') {
+            $zapLauncherProcessId = Get-Content '.\zap-launcher.pid' -ErrorAction SilentlyContinue
+            if ($zapLauncherProcessId) {
+              Stop-Process -Id $zapLauncherProcessId -Force -ErrorAction SilentlyContinue
             }
           }
