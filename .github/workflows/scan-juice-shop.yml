@@ -12,6 +12,9 @@ jobs:
     timeout-minutes: 90
     env:
       ZAP_PROXY: http://127.0.0.1:8080
+      ZAP_JAVA_MAX_HEAP: 2048m
+      PLAYWRIGHT_HTML_OPEN: never
+      PLAYWRIGHT_SKIP_BROWSER_GC: 1
 
     steps:
       - name: Checkout repository
@@ -45,8 +48,8 @@ jobs:
       - name: Install root dependencies
         run: npm.cmd install
 
-      - name: Install Playwright browsers
-        run: npx.cmd playwright install --with-deps
+      - name: Install Playwright Chromium browser
+        run: npx.cmd playwright install chromium
 
       - name: Stop stale listeners on 8080
         shell: powershell
@@ -104,6 +107,11 @@ jobs:
           $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
           Write-Host "Using ZAP working directory: $zapWorkingDirectory"
 
+          $javaHeapArg = "-Xmx$env:ZAP_JAVA_MAX_HEAP"
+          $env:JAVA_OPTS = "$javaHeapArg $env:JAVA_OPTS".Trim()
+          $env:ZAP_JAVA_OPTS = "$javaHeapArg $env:ZAP_JAVA_OPTS".Trim()
+          Write-Host "Using ZAP Java heap setting: $javaHeapArg"
+
           $zapArgs = @(
             '-daemon',
             '-host', '0.0.0.0',
@@ -131,7 +139,7 @@ jobs:
             Write-Host "Detected ZAP jar for fallback: $($zapJar.FullName)"
 
             $javaArgs = @(
-              '-Xmx512m',
+              $javaHeapArg,
               '-jar', $zapJar.FullName
             ) + $zapArgs
 
