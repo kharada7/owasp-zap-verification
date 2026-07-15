@@ -481,11 +481,11 @@ jobs:
                     return $true
                   }
                 } catch {
-                  Write-Host "Preflight API parse failed on attempt $attempt: $($_.Exception.Message)"
+                  Write-Host "Preflight API parse failed on attempt ${attempt}: $($_.Exception.Message)"
                 }
               }
 
-              Write-Host "Preflight probe $attempt/$MaxAttempts: ZAP API not ready yet."
+              Write-Host "Preflight probe ${attempt}/${MaxAttempts}: ZAP API not ready yet."
               Start-Sleep -Seconds 5
             }
 
