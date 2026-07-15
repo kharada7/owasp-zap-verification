@@ -118,38 +118,71 @@ jobs:
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
 
+          $startupPlans = @(
+            @{
+              Name = 'zap.bat'
+              FilePath = $zapCommand
+              Arguments = $zapArgs
+            }
+          )
+
           if ($javaCommand -and $zapJar) {
-            Write-Host "Starting ZAP via Java: $($javaCommand.Source)"
-            Write-Host "Using ZAP jar: $($zapJar.FullName)"
+            Write-Host "Java fallback is available: $($javaCommand.Source)"
+            Write-Host "Detected ZAP jar for fallback: $($zapJar.FullName)"
 
             $javaArgs = @(
               '-Xmx512m',
               '-jar', $zapJar.FullName
             ) + $zapArgs
 
-            $process = Start-Process -FilePath $javaCommand.Source -ArgumentList $javaArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+            $startupPlans += @{
+              Name = 'java-jar'
+              FilePath = $javaCommand.Source
+              Arguments = $javaArgs
+            }
           } else {
-            Write-Host 'Java command or zap-*.jar not found. Falling back to zap.bat startup.'
-            $process = Start-Process -FilePath $zapCommand -ArgumentList $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+            Write-Host 'Java command or zap-*.jar not found. Java fallback is disabled.'
           }
 
-          Set-Content -Path '.\zap-launcher.pid' -Value $process.Id
-          Set-Content -Path '.\zap.pid' -Value $process.Id
-          Write-Host "Started ZAP launcher process ID: $($process.Id)"
-
+          $process = $null
           $localListener = $null
-          for ($attempt = 1; $attempt -le 12; $attempt++) {
-            $launcherAlive = $null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)
-            $localListener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+          $selectedMode = $null
+
+          foreach ($plan in $startupPlans) {
+            Write-Host "Starting ZAP via $($plan.Name): $($plan.FilePath)"
+            $process = Start-Process -FilePath $plan.FilePath -ArgumentList $plan.Arguments -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+
+            Set-Content -Path '.\zap-launcher.pid' -Value $process.Id
+            Set-Content -Path '.\zap.pid' -Value $process.Id
+            Set-Content -Path '.\zap-startup.mode' -Value $plan.Name
+            Write-Host "Started ZAP launcher process ID: $($process.Id)"
+
+            $localListener = $null
+            for ($attempt = 1; $attempt -le 12; $attempt++) {
+              $launcherAlive = $null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)
+              $localListener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+
+              if ($localListener) {
+                Set-Content -Path '.\zap.pid' -Value $localListener.OwningProcess
+                $selectedMode = $plan.Name
+                Write-Host "Local listener detected on startup check. PID: $($localListener.OwningProcess)"
+                break
+              }
+
+              Write-Host "Startup probe $attempt/12 ($($plan.Name)): local listener not ready yet (launcher alive=$launcherAlive)."
+              Start-Sleep -Seconds 5
+            }
 
             if ($localListener) {
-              Set-Content -Path '.\zap.pid' -Value $localListener.OwningProcess
-              Write-Host "Local listener detected on startup check. PID: $($localListener.OwningProcess)"
               break
             }
 
-            Write-Host "Startup probe $attempt/12: local listener not ready yet (launcher alive=$launcherAlive)."
-            Start-Sleep -Seconds 5
+            Write-Warning "Startup mode '$($plan.Name)' did not create a local listener on port 8080."
+            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 80 }
+            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 80 }
+
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
           }
 
           if (-not $localListener) {
@@ -162,6 +195,8 @@ jobs:
             if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
             exit 1
           }
+
+          Write-Host "ZAP startup mode selected: $selectedMode"
 
       - name: Check ZAP process started
         shell: powershell
