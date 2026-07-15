@@ -53,26 +53,23 @@ jobs:
         run: |
           Write-Host '=== Stop stale listeners on port 8080 ==='
 
-          $listenerLines = netstat -ano | Select-String ':8080\s+.*LISTENING\s+(\d+)$'
-          if (-not $listenerLines) {
+          $listenerConnections = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+          if (-not $listenerConnections) {
             Write-Host 'No listener found on port 8080.'
             exit 0
           }
 
-          foreach ($line in $listenerLines) {
-            $match = [regex]::Match($line.Line, '(\d+)$')
-            if ($match.Success) {
-              $portOwnerProcessId = $match.Groups[1].Value
-              Write-Host "Stopping process on port 8080: PID $portOwnerProcessId"
-              Stop-Process -Id $portOwnerProcessId -Force -ErrorAction SilentlyContinue
-            }
+          foreach ($conn in $listenerConnections) {
+            $portOwnerProcessId = $conn.OwningProcess
+            Write-Host "Stopping process on port 8080: PID $portOwnerProcessId"
+            Stop-Process -Id $portOwnerProcessId -Force -ErrorAction SilentlyContinue
           }
 
           Start-Sleep -Seconds 2
-          $remaining = netstat -ano | Select-String ':8080\s+.*LISTENING\s+(\d+)$'
+          $remaining = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
           if ($remaining) {
             Write-Error 'Port 8080 is still in use after cleanup attempt.'
-            $remaining | ForEach-Object { $_.Line }
+            $remaining | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
             exit 1
           }
 
@@ -123,14 +120,11 @@ jobs:
           $localListener = $null
           for ($attempt = 1; $attempt -le 12; $attempt++) {
             $launcherAlive = $null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)
-            $localListener = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$' | Select-Object -First 1
+            $localListener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 
             if ($localListener) {
-              $match = [regex]::Match($localListener.Line, '(\d+)\s*$')
-              if ($match.Success) {
-                Set-Content -Path '.\zap.pid' -Value $match.Groups[1].Value
-                Write-Host "Local listener detected on startup check. PID: $($match.Groups[1].Value)"
-              }
+              Set-Content -Path '.\zap.pid' -Value $localListener.OwningProcess
+              Write-Host "Local listener detected on startup check. PID: $($localListener.OwningProcess)"
               break
             }
 
@@ -143,7 +137,7 @@ jobs:
             Write-Host '=== java process snapshot ==='
             Get-Process -Name java -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path
             Write-Host '=== netstat for local 8080 ==='
-            netstat -ano | Select-String ':8080' | ForEach-Object { $_.Line }
+            Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess | Format-Table -AutoSize
             if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
             if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
             exit 1
@@ -168,16 +162,13 @@ jobs:
 
           Write-Host ''
           Write-Host '=== Local LISTEN check for 8080 ==='
-          $portLines = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$'
-          $portLines | ForEach-Object { $_.Line }
+          $portLines = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+          $portLines | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
 
           $listenerPid = $null
           foreach ($line in $portLines) {
-            $match = [regex]::Match($line.Line, '(\d+)$')
-            if ($match.Success) {
-              $listenerPid = $match.Groups[1].Value
-              break
-            }
+            $listenerPid = $line.OwningProcess
+            break
           }
 
           if ($listenerPid) {
@@ -209,20 +200,19 @@ jobs:
           $env:NO_PROXY = '127.0.0.1,localhost'
           $env:no_proxy = '127.0.0.1,localhost'
           Write-Host "NO_PROXY: $env:NO_PROXY"
+          $versionUrl = "$env:ZAP_PROXY/JSON/core/view/version/"
 
           for ($i = 1; $i -le 60; $i++) {
             Write-Host "Attempt $i/60..."
 
             try {
-              $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/core/view/version/" -TimeoutSec 5 -ErrorAction Stop
+              $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 $versionUrl
+              $response = $raw | ConvertFrom-Json
               if ($response.version) {
-                $listenerLine = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$' | Select-Object -First 1
+                $listenerLine = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($listenerLine) {
-                  $match = [regex]::Match($listenerLine.Line, '(\d+)$')
-                  if ($match.Success) {
-                    Set-Content -Path '.\zap.pid' -Value $match.Groups[1].Value
-                    Write-Host "Recorded ZAP listener process ID: $($match.Groups[1].Value)"
-                  }
+                  Set-Content -Path '.\zap.pid' -Value $listenerLine.OwningProcess
+                  Write-Host "Recorded ZAP listener process ID: $($listenerLine.OwningProcess)"
                 }
                 Write-Host "ZAP API is ready. Version: $($response.version)"
                 exit 0
@@ -243,9 +233,9 @@ jobs:
 
               if (($i % 15) -eq 0) {
                 Write-Host 'Current local LISTEN state for 8080:'
-                $localPortState = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$'
+                $localPortState = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
                 if ($localPortState) {
-                  $localPortState | ForEach-Object { $_.Line }
+                  $localPortState | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
                 } else {
                   Write-Host 'No local LISTEN socket on port 8080.'
                 }
