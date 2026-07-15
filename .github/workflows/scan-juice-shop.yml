@@ -708,6 +708,44 @@ jobs:
             }
           }
 
+          # Ensure no remaining Juice Shop listener keeps DB/files locked.
+          $juiceListeners = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
+          foreach ($listener in $juiceListeners) {
+            Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+          }
+
+          Write-Host '=== Reset Juice Shop data ==='
+          $candidateRoots = @(
+            (Join-Path $PWD 'juice-shop'),
+            $PWD
+          ) | Select-Object -Unique
+
+          foreach ($root in $candidateRoots) {
+            if (-not (Test-Path $root)) {
+              continue
+            }
+
+            $sqliteDbPath = Join-Path $root 'data\juiceshop.sqlite'
+            if (Test-Path $sqliteDbPath) {
+              Write-Host "Removing SQLite DB: $sqliteDbPath"
+              Remove-Item -Path $sqliteDbPath -Force -ErrorAction SilentlyContinue
+            }
+
+            $marsDbPath = Join-Path $root 'data\marsdb'
+            if (Test-Path $marsDbPath) {
+              Write-Host "Removing MarsDB data: $marsDbPath"
+              Remove-Item -Path $marsDbPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+
+            $uploadsDir = Join-Path $root 'frontend\dist\frontend\assets\public\images\uploads'
+            if (Test-Path $uploadsDir) {
+              Write-Host "Cleaning uploaded images in: $uploadsDir"
+              Get-ChildItem -Path $uploadsDir -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notin @('default.svg', 'defaultAdmin.png') } |
+                Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+          }
+
           if (Test-Path '.\zap.pid') {
             $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
             if ($zapProcessId) {
