@@ -104,6 +104,9 @@ jobs:
             exit 1
           }
 
+          $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
+          Write-Host "Using ZAP working directory: $zapWorkingDirectory"
+
           $process = Start-Process -FilePath $zapCommand -ArgumentList @(
             '-daemon',
             '-host', '0.0.0.0',
@@ -111,7 +114,7 @@ jobs:
             '-config', 'api.disablekey=true',
             '-config', 'api.addrs.addr.name=.*',
             '-config', 'api.addrs.addr.regex=true'
-          ) -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+          ) -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
 
           Set-Content -Path '.\zap-launcher.pid' -Value $process.Id
           Set-Content -Path '.\zap.pid' -Value $process.Id
