@@ -60,8 +60,8 @@ jobs:
 
           if (-not $zapCommand) {
             $candidatePaths = @(
-              'C:\Program Files\OWASP\Zed Attack Proxy\zap.bat',
-              'C:\Program Files (x86)\OWASP\Zed Attack Proxy\zap.bat'
+              'C:\Program Files\ZAP\Zed Attack Proxy\zap.bat',
+              'C:\Program Files (x86)\ZAP\Zed Attack Proxy\zap.bat'
             )
             foreach ($candidate in $candidatePaths) {
               if (Test-Path $candidate) {
