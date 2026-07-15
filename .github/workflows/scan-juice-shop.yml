@@ -17,11 +17,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify Node and npm on runner
+        shell: powershell
+        run: |
+          Write-Host '=== Node/npm diagnostics ==='
+          Write-Host "PATH: $env:PATH"
+
+          $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+          $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+          $npmCmdCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+
+          if ($nodeCmd) { Write-Host "node command: $($nodeCmd.Source)" }
+          if ($npmCmd) { Write-Host "npm command: $($npmCmd.Source)" }
+          if ($npmCmdCmd) { Write-Host "npm.cmd command: $($npmCmdCmd.Source)" }
+
+          where.exe node
+          where.exe npm
+
+          node -v
+          npm -v
+
       - name: Install root dependencies
-        run: npm install
+        run: npm.cmd install
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: npx.cmd playwright install --with-deps
 
       - name: Start OWASP ZAP
         shell: powershell
@@ -132,7 +157,7 @@ jobs:
         shell: powershell
         run: |
           Write-Host 'Running Playwright tests...'
-          npx playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
+          npx.cmd playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
           Write-Host "Playwright tests completed with exit code: $LASTEXITCODE"
 
           Write-Host 'Checking for playwright-report directory...'
