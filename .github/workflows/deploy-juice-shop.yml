@@ -37,8 +37,8 @@ jobs:
 
           $netstatLines = netstat -ano | Select-String ":3000\s+.*LISTENING\s+(\d+)$"
           foreach ($line in $netstatLines) {
-            $pid = [int]$line.Matches[0].Groups[1].Value
-            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            $portOwnerProcessId = [int]$line.Matches[0].Groups[1].Value
+            Stop-Process -Id $portOwnerProcessId -Force -ErrorAction SilentlyContinue
           }
 
       - name: Start Juice Shop from repository
@@ -68,8 +68,8 @@ jobs:
 
           while ((Get-Date) -lt $deadline) {
             if (Test-Path ".\juice-shop.pid") {
-              $pid = Get-Content ".\juice-shop.pid" -ErrorAction SilentlyContinue
-              if ($pid -and $null -eq (Get-Process -Id $pid -ErrorAction SilentlyContinue)) {
+              $juiceShopProcessId = Get-Content ".\juice-shop.pid" -ErrorAction SilentlyContinue
+              if ($juiceShopProcessId -and $null -eq (Get-Process -Id $juiceShopProcessId -ErrorAction SilentlyContinue)) {
                 Write-Error "Juice Shop process is no longer running before health check succeeded."
                 if (Test-Path ".\juice-shop.log") {
                   Get-Content ".\juice-shop.log" -Tail 50
