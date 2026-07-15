@@ -19,7 +19,7 @@ test("add-cart-and-buy", async ({ page }) => {
 
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
+  await page.goto("http://127.0.0.1:3000/", { waitUntil: "domcontentloaded" });
 
   // Close cookie banner and neutralize its overlay if it keeps intercepting clicks.
   await closeCookieBanner(page);

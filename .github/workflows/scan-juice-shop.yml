@@ -361,6 +361,8 @@ jobs:
                   if ($listenerLine) {
                     Set-Content -Path '.\zap.pid' -Value $listenerLine.OwningProcess
                     Write-Host "Recorded ZAP listener process ID: $($listenerLine.OwningProcess)"
+                    $resolvedZapProxy = 'http://127.0.0.1:8080'
+                    Write-Host 'Using loopback ZAP proxy for subsequent steps: http://127.0.0.1:8080'
                   }
                   Write-Host "ZAP API is ready. Version: $($response.version) via $baseUrl"
                   break

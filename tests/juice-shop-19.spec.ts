@@ -8,7 +8,7 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-// ログイン後に Privacy & Security から Last Login IP ページへ移動するシナリオ
+// ログイン後に Privacy & Security から Last Login IP ペ�Eジへ移動するシナリオ
 test("navigate-to-last-login-ip", async ({ page }) => {
   test.setTimeout(60000);
 
@@ -18,7 +18,7 @@ test("navigate-to-last-login-ip", async ({ page }) => {
 
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
+  await page.goto("http://127.0.0.1:3000/", { waitUntil: "domcontentloaded" });
 
   // Close cookie banner and neutralize its overlay if it keeps intercepting clicks.
   await closeCookieBanner(page);
@@ -38,7 +38,7 @@ test("navigate-to-last-login-ip", async ({ page }) => {
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
 
-  // Account → Privacy & Security → Last Login IP の順で移動する。
+  // Account ↁEPrivacy & Security ↁELast Login IP の頁E��移動する、E
   await page.getByRole("button", { name: "Show/hide account menu" }).click();
   await page
     .getByRole("menuitem", { name: "Show Privacy and Security Menu" })

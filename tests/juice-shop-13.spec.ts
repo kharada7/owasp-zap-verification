@@ -18,7 +18,7 @@ test("add-new-saved-address", async ({ page }) => {
 
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await page.goto("http://localhost:3000/", { waitUntil: "domcontentloaded" });
+  await page.goto("http://127.0.0.1:3000/", { waitUntil: "domcontentloaded" });
 
   // Close cookie banner and neutralize its overlay if it keeps intercepting clicks.
   await closeCookieBanner(page);
@@ -38,7 +38,7 @@ test("add-new-saved-address", async ({ page }) => {
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
 
-  // Account → Orders & Payment → My saved addresses の順で移動する。
+  // Account ↁEOrders & Payment ↁEMy saved addresses の頁E��移動する、E
   await page.getByRole("button", { name: "Show/hide account menu" }).click();
   await page
     .getByRole("menuitem", { name: "Show Orders and Payment Menu" })
@@ -49,12 +49,12 @@ test("add-new-saved-address", async ({ page }) => {
 
   await expect(page).toHaveURL(/#\/address\/saved$/);
 
-  // 画面下部の Add New Address をクリックする。
+  // 画面下部の Add New Address をクリチE��する、E
   await page.getByRole("button", { name: "Add a new address" }).click();
 
   await expect(page).toHaveURL(/#\/address\/create$/);
 
-  // 住所入力欄に適当な文字列を入力して Submit を押す。
+  // 住所入力欁E��適当な斁E���Eを�E力して Submit を押す、E
   await page.getByRole("textbox", { name: "Country" }).fill("Japan");
   await page.getByRole("textbox", { name: "Name" }).fill("Taro Juice");
   await page.getByRole("spinbutton", { name: "Mobile Number" }).fill("1234567890");
