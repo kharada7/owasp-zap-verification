@@ -122,10 +122,12 @@ jobs:
             Write-Host "Starting ZAP via Java: $($javaCommand.Source)"
             Write-Host "Using ZAP jar: $($zapJar.FullName)"
 
-            $process = Start-Process -FilePath $javaCommand.Source -ArgumentList @(
+            $javaArgs = @(
               '-Xmx512m',
               '-jar', $zapJar.FullName
-            ) + $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+            ) + $zapArgs
+
+            $process = Start-Process -FilePath $javaCommand.Source -ArgumentList $javaArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
           } else {
             Write-Host 'Java command or zap-*.jar not found. Falling back to zap.bat startup.'
             $process = Start-Process -FilePath $zapCommand -ArgumentList $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
