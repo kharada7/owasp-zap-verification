@@ -104,14 +104,32 @@ jobs:
           $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
           Write-Host "Using ZAP working directory: $zapWorkingDirectory"
 
-          $process = Start-Process -FilePath $zapCommand -ArgumentList @(
+          $zapArgs = @(
             '-daemon',
             '-host', '0.0.0.0',
             '-port', '8080',
             '-config', 'api.disablekey=true',
             '-config', 'api.addrs.addr.name=.*',
             '-config', 'api.addrs.addr.regex=true'
-          ) -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+          )
+
+          $javaCommand = Get-Command java -ErrorAction SilentlyContinue
+          $zapJar = Get-ChildItem -Path $zapWorkingDirectory -Filter 'zap-*.jar' -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if ($javaCommand -and $zapJar) {
+            Write-Host "Starting ZAP via Java: $($javaCommand.Source)"
+            Write-Host "Using ZAP jar: $($zapJar.FullName)"
+
+            $process = Start-Process -FilePath $javaCommand.Source -ArgumentList @(
+              '-Xmx512m',
+              '-jar', $zapJar.FullName
+            ) + $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+          } else {
+            Write-Host 'Java command or zap-*.jar not found. Falling back to zap.bat startup.'
+            $process = Start-Process -FilePath $zapCommand -ArgumentList $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
+          }
 
           Set-Content -Path '.\zap-launcher.pid' -Value $process.Id
           Set-Content -Path '.\zap.pid' -Value $process.Id
