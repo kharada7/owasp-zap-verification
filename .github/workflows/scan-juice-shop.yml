@@ -187,13 +187,13 @@ jobs:
           }
 
           if (-not $launcherAlive) {
-            Write-Error 'ZAP launcher has exited and no listener was found on port 8080.'
+            Write-Warning 'ZAP launcher has exited and no local listener was found yet. Continuing to Wait for ZAP API for final readiness check.'
             if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 100 }
             if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 100 }
-            exit 1
+            exit 0
           }
 
-          Write-Host 'Launcher is alive; continuing to API readiness check.'
+          Write-Host 'Launcher is alive but no local listener yet; continuing to Wait for ZAP API.'
 
       - name: Wait for ZAP API
         shell: powershell
