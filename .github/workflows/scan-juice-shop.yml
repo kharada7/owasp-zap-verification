@@ -117,22 +117,32 @@ jobs:
           Set-Content -Path '.\zap.pid' -Value $process.Id
           Write-Host "Started ZAP launcher process ID: $($process.Id)"
 
-          Start-Sleep -Seconds 5
-          $launcherAlive = $null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)
-          $localListener = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$' | Select-Object -First 1
+          $localListener = $null
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            $launcherAlive = $null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)
+            $localListener = netstat -ano | Select-String '^\s*TCP\s+(127\.0\.0\.1|0\.0\.0\.0|\[::\]|::):8080\s+\S+\s+LISTENING\s+(\d+)\s*$' | Select-Object -First 1
 
-          if ($localListener) {
-            $match = [regex]::Match($localListener.Line, '(\d+)\s*$')
-            if ($match.Success) {
-              Set-Content -Path '.\zap.pid' -Value $match.Groups[1].Value
-              Write-Host "Local listener detected on startup check. PID: $($match.Groups[1].Value)"
+            if ($localListener) {
+              $match = [regex]::Match($localListener.Line, '(\d+)\s*$')
+              if ($match.Success) {
+                Set-Content -Path '.\zap.pid' -Value $match.Groups[1].Value
+                Write-Host "Local listener detected on startup check. PID: $($match.Groups[1].Value)"
+              }
+              break
             }
+
+            Write-Host "Startup probe $attempt/12: local listener not ready yet (launcher alive=$launcherAlive)."
+            Start-Sleep -Seconds 5
           }
 
-          if (-not $launcherAlive -and -not $localListener) {
-            Write-Error 'ZAP launcher exited quickly and no local listener on 127.0.0.1:8080/0.0.0.0:8080 was found.'
-            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 120 }
-            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 120 }
+          if (-not $localListener) {
+            Write-Error 'No local listener on 127.0.0.1:8080/0.0.0.0:8080 after startup grace period (60s).'
+            Write-Host '=== java process snapshot ==='
+            Get-Process -Name java -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path
+            Write-Host '=== netstat for local 8080 ==='
+            netstat -ano | Select-String ':8080' | ForEach-Object { $_.Line }
+            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
+            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
             exit 1
           }
 
