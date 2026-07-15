@@ -213,7 +213,7 @@ jobs:
             Select-Object -ExpandProperty IPAddress -Unique
 
           foreach ($ip in $localIps) {
-            $candidateUrls += "http://$ip:8080"
+            $candidateUrls += "http://${ip}:8080"
           }
 
           $candidateUrls = $candidateUrls | Select-Object -Unique
