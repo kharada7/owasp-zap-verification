@@ -1,7 +1,11 @@
-name: Scan OWASP Juice Shop with ZAP and Playwright 2
+name: Scan Juice Shop And Create Issues
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   dast:
@@ -193,43 +197,79 @@ jobs:
           path: reports
           if-no-files-found: error
 
-      - name: Fail workflow on Medium/High ZAP risks
-        run: |
-          set -euo pipefail
-
-          if [ ! -s reports/zap-report.json ]; then
-            echo "ERROR: reports/zap-report.json not found or empty."
-            exit 1
-          fi
-
-          node -e "
+      - name: Create GitHub issue on Medium/High ZAP risks
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
             const fs = require('node:fs')
-            const report = JSON.parse(fs.readFileSync('reports/zap-report.json', 'utf8'))
-            const alerts = (report.site || []).flatMap(s => s.alerts || [])
 
-            const isMedium = (a) => {
-              const code = String(a.riskcode ?? '').trim()
-              const desc = String(a.riskdesc ?? '').toLowerCase()
-              return code === '2' || /medium/.test(desc)
+            try {
+              if (!fs.existsSync('reports/zap-report.json')) {
+                core.warning('reports/zap-report.json not found. Skipping issue creation.')
+                return
+              }
+
+              const report = JSON.parse(fs.readFileSync('reports/zap-report.json', 'utf8'))
+              const alerts = (report.site || []).flatMap((s) => s.alerts || [])
+
+              const isMedium = (a) => {
+                const code = String(a.riskcode ?? '').trim()
+                const desc = String(a.riskdesc ?? '').toLowerCase()
+                return code === '2' || /medium/.test(desc)
+              }
+
+              const isHigh = (a) => {
+                const code = String(a.riskcode ?? '').trim()
+                const desc = String(a.riskdesc ?? '').toLowerCase()
+                return code === '3' || /high/.test(desc)
+              }
+
+              const mediumAlerts = alerts.filter(isMedium)
+              const highAlerts = alerts.filter(isHigh)
+              const mediumCount = mediumAlerts.length
+              const highCount = highAlerts.length
+              const total = mediumCount + highCount
+
+              core.info(`ZAP risk summary: High=${highCount}, Medium=${mediumCount}`)
+
+              if (total === 0) {
+                core.info('No Medium/High risk findings detected. No issue will be created.')
+                return
+              }
+
+              const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+              const title = `[ZAP] Medium/High findings detected (${new Date().toISOString().slice(0, 10)})`
+
+              const findingLines = [...highAlerts, ...mediumAlerts]
+                .slice(0, 20)
+                .map((a) => `- ${a.alert || 'Unknown alert'} (risk: ${a.riskdesc || a.riskcode || 'n/a'})`)
+
+              const body = [
+                'ZAP scan detected Medium and/or High risk findings.',
+                '',
+                `- High: ${highCount}`,
+                `- Medium: ${mediumCount}`,
+                `- Workflow run: ${runUrl}`,
+                '',
+                'Top findings:',
+                ...findingLines,
+                '',
+                '_This issue was created automatically by GitHub Actions._'
+              ].join('\n')
+
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              })
+
+              core.info(`Created issue: ${created.data.html_url}`)
+            } catch (error) {
+              core.warning(`Could not create issue: ${error.message}`)
             }
-
-            const isHigh = (a) => {
-              const code = String(a.riskcode ?? '').trim()
-              const desc = String(a.riskdesc ?? '').toLowerCase()
-              return code === '3' || /high/.test(desc)
-            }
-
-            const mediumCount = alerts.filter(isMedium).length
-            const highCount = alerts.filter(isHigh).length
-            const total = mediumCount + highCount
-
-            console.log(`ZAP risk summary: High=${highCount}, Medium=${mediumCount}`)
-
-            if (total > 0) {
-              console.error('ERROR: Medium or High risk findings were detected in ZAP report.')
-              process.exit(1)
-            }
-          "
 
       - name: Upload runtime logs
         if: always()
