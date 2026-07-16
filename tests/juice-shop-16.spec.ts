@@ -3,13 +3,12 @@ import { login } from "../pages/login";
 import {
   closeBlockingOverlays,
   closeCookieBanner,
-  completeJuiceShopPurchase,
   dismissWelcomeBanner,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-// ログイン後に購入を完亁E��、Privacy Policy ペ�Eジへ移動するシナリオ
+// ログイン後に購入を完亁E��、Privacy Policy ペ�Eジへ移動するシナリオ
 test("add-privacy-policy-navigation", async ({ page }) => {
   test.setTimeout(60000);
 
@@ -39,14 +38,59 @@ test("add-privacy-policy-navigation", async ({ page }) => {
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
 
-  await completeJuiceShopPurchase(page);
+  await page
+    .locator("mat-card")
+    .filter({ hasText: "Lemon Juice (500ml)" })
+    .getByRole("button", { name: "Add to Basket" })
+    .click();
+
+  await expect(page.getByRole("button", { name: "Show the shopping cart" })).toContainText("1");
+
+  await page.getByRole("button", { name: "Show the shopping cart" }).click();
+
+  const checkoutButton = page.getByRole("button", { name: "Checkout" });
+  await expect(checkoutButton).toBeEnabled();
+  await checkoutButton.click();
+
+  await page.getByRole("button", { name: "Add a new address" }).click();
+
+  await page.getByRole("textbox", { name: "Country" }).fill("Japan");
+  await page.getByRole("textbox", { name: "Name" }).fill("Alice");
+  await page
+    .getByRole("spinbutton", { name: "Mobile Number" })
+    .fill("01234567890");
+  await page.getByRole("textbox", { name: "ZIP Code" }).fill("135-0061");
+  await page.getByRole("textbox", { name: "Address" }).fill("Toyosu 1-1-1");
+  await page.getByRole("textbox", { name: "City" }).fill("Koto-ku");
+  await page.getByRole("textbox", { name: "State" }).fill("Tokyo");
+  await page.getByRole("button", { name: "Submit" }).click();
+
+  const aliceAddressRow = page
+    .locator("tr, mat-row")
+    .filter({ hasText: /Alice/ });
+  await aliceAddressRow.first().locator("mat-radio-button").first().click();
+  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
+
+  const fastDeliveryRow = page
+    .locator("tr, mat-row")
+    .filter({ hasText: /Fast Delivery/ });
+  await fastDeliveryRow.first().locator("mat-radio-button").first().click();
+  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
+
+  const paymentMethodRow = page
+    .locator("tr, mat-row")
+    .filter({ hasText: /\/\d{4}$/ });
+  await paymentMethodRow.first().locator("mat-radio-button").first().click();
+  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
+
+  await page.getByRole("button", { name: "Complete your purchase" }).click();
 
   await expect(page).toHaveURL(/#\/order-completion\//);
   await expect(
     page.getByRole("heading", { name: "Thank you for your purchase!" }),
   ).toBeVisible();
 
-  // Account ↁEPrivacy & Security ↁEPrivacy Policy の頁E��移動する、E
+  // Account ↁEPrivacy & Security ↁEPrivacy Policy の頁E��移動する、E
   await page.getByRole("button", { name: "Show/hide account menu" }).click();
   await page
     .getByRole("menuitem", { name: "Show Privacy and Security Menu" })
