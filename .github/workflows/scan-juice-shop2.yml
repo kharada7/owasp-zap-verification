@@ -97,16 +97,22 @@ jobs:
           curl -v $ZAP_PROXY/ 2>&1 || true
           exit 1
 
-      - name: Run Playwright via ZAP proxy
+      - name: Run Playwright via ZAP proxy (stateless set)
         run: |
-          echo "Running Playwright tests..."
-          npx playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
-          echo "Playwright tests completed with exit code: $?"
+          echo "Running stateless Playwright tests..."
+          npx playwright test ./tests/ --project=chromium --workers=1 --timeout=120000 --reporter=html --reporter=line --grep-invert "change-password-from-privacy-security"
+          echo "Stateless Playwright tests completed with exit code: $?"
           echo "Checking for playwright-report directory..."
           ls -la playwright-report/ || echo "Warning: playwright-report not found"
           
           echo "Verifying Juice Shop is still running..."
           curl -fsS http://127.0.0.1:3000/ > /dev/null && echo "✓ Juice Shop is accessible" || echo "✗ Juice Shop is not accessible"
+
+      - name: Run Playwright via ZAP proxy (stateful set)
+        run: |
+          echo "Running stateful Playwright tests..."
+          npx playwright test ./tests/juice-shop-18.spec.ts --project=chromium --workers=1 --timeout=120000 --reporter=html --reporter=line
+          echo "Stateful Playwright tests completed with exit code: $?"
 
       - name: Generate ZAP report with Automation Framework
         run: |
