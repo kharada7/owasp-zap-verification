@@ -228,45 +228,70 @@ jobs:
 
               const mediumAlerts = alerts.filter(isMedium)
               const highAlerts = alerts.filter(isHigh)
-              const mediumCount = mediumAlerts.length
-              const highCount = highAlerts.length
-              const total = mediumCount + highCount
+              const findings = [...highAlerts, ...mediumAlerts]
+              core.info(`ZAP risk summary: High=${highAlerts.length}, Medium=${mediumAlerts.length}`)
 
-              core.info(`ZAP risk summary: High=${highCount}, Medium=${mediumCount}`)
-
-              if (total === 0) {
+              if (findings.length === 0) {
                 core.info('No Medium/High risk findings detected. No issue will be created.')
                 return
               }
 
               const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-              const title = `[ZAP] Medium/High findings detected (${new Date().toISOString().slice(0, 10)})`
+              let createdCount = 0
 
-              const findingLines = [...highAlerts, ...mediumAlerts]
-                .slice(0, 20)
-                .map((a) => `- ${a.alert || 'Unknown alert'} (risk: ${a.riskdesc || a.riskcode || 'n/a'})`)
+              for (const finding of findings) {
+                const risk = String(finding.riskdesc || finding.riskcode || 'n/a').trim()
+                const alertName = String(finding.alert || 'Unknown alert').trim()
+                const pluginId = String(finding.pluginid || 'unknown').trim()
+                const cweId = String(finding.cweid || 'n/a').trim()
+                const wascId = String(finding.wascid || 'n/a').trim()
+                const description = String(finding.desc || '').trim()
+                const solution = String(finding.solution || '').trim()
+                const reference = String(finding.reference || '').trim()
 
-              const body = [
-                'ZAP scan detected Medium and/or High risk findings.',
-                '',
-                `- High: ${highCount}`,
-                `- Medium: ${mediumCount}`,
-                `- Workflow run: ${runUrl}`,
-                '',
-                'Top findings:',
-                ...findingLines,
-                '',
-                '_This issue was created automatically by GitHub Actions._'
-              ].join('\n')
+                const instances = Array.isArray(finding.instances) ? finding.instances : []
+                const locations = instances
+                  .slice(0, 20)
+                  .map((i) => `- ${i.uri || 'n/a'} [${i.method || 'METHOD'}] ${i.param ? `(param: ${i.param})` : ''}`.trim())
 
-              const created = await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body
-              })
+                const title = `[ZAP][${risk}] ${alertName} (pluginId:${pluginId})`
+                const body = [
+                  'ZAP scan detected a Medium/High risk vulnerability.',
+                  '',
+                  `- Risk: ${risk}`,
+                  `- Alert: ${alertName}`,
+                  `- Plugin ID: ${pluginId}`,
+                  `- CWE: ${cweId}`,
+                  `- WASC: ${wascId}`,
+                  `- Workflow run: ${runUrl}`,
+                  '',
+                  'Description:',
+                  description || 'n/a',
+                  '',
+                  'Solution:',
+                  solution || 'n/a',
+                  '',
+                  'Reference:',
+                  reference || 'n/a',
+                  '',
+                  'Affected locations (up to 20):',
+                  ...(locations.length > 0 ? locations : ['- n/a']),
+                  '',
+                  '_This issue was created automatically by GitHub Actions._'
+                ].join('\n')
 
-              core.info(`Created issue: ${created.data.html_url}`)
+                const created = await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body
+                })
+
+                createdCount += 1
+                core.info(`Created issue: ${created.data.html_url}`)
+              }
+
+              core.info(`Created ${createdCount} issue(s) for Medium/High findings.`)
             } catch (error) {
               core.warning(`Could not create issue: ${error.message}`)
             }
