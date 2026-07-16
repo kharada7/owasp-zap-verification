@@ -1,4 +1,4 @@
-import { Page } from "@playwright/test";
+import { expect, Page } from "@playwright/test";
 
 // オーバーレイが表示されている場合は閉じる。最大5回までリトライ。
 export const closeBlockingOverlays = async (page: Page) => {
@@ -15,12 +15,22 @@ export const closeBlockingOverlays = async (page: Page) => {
   }
 };
 
+// CIで再出現しやすいCookie/Welcome/Backdropをまとめて安定化する。
+export const stabilizeUi = async (page: Page) => {
+  await closeCookieBanner(page);
+  await dismissWelcomeBanner(page);
+  await closeBlockingOverlays(page);
+  await neutralizeCookieBanner(page);
+};
+
 // アカウントメニューを開いてログインをクリックする。オーバーレイが邪魔している場合は閉じる。最大3回までリトライ。
 export const openAccountMenuAndClickLogin = async (page: Page) => {
   for (let attempt = 1; attempt <= 3; attempt++) {
-    await closeBlockingOverlays(page);
+    await stabilizeUi(page);
 
     await page.locator("#navbarAccount").click({ timeout: 10000 });
+    await dismissWelcomeBanner(page);
+    await closeBlockingOverlays(page);
 
     const loginInMenu = page.locator(".cdk-overlay-pane #navbarLoginButton").first();
     await loginInMenu.waitFor({ state: "visible", timeout: 10000 });
@@ -78,20 +88,21 @@ export const dismissWelcomeBanner = async (page: Page) => {
 
 // ログイン後の購入フローを実行し、注文完了画面まで進める。
 export const completeJuiceShopPurchase = async (page: Page) => {
-  // Attempt to add the sold-out mask, then add Lemon Juice.
-  await page
-    .locator("mat-card")
-    .filter({ hasText: "Best Juice Shop Salesman Artwork" })
-    .getByRole("button", { name: "Add to Basket" })
-    .click();
+  await stabilizeUi(page);
+
+  // 在庫のある商品を明示的に追加して、Checkoutの有効化を待つ。
   await page
     .locator("mat-card")
     .filter({ hasText: "Lemon Juice (500ml)" })
     .getByRole("button", { name: "Add to Basket" })
     .click();
 
+  await expect(page.getByRole("button", { name: "Show the shopping cart" })).toContainText("1");
+
   await page.getByRole("button", { name: "Show the shopping cart" }).click();
-  await page.getByRole("button", { name: "Checkout" }).click();
+  const checkoutButton = page.getByRole("button", { name: "Checkout" });
+  await expect(checkoutButton).toBeEnabled();
+  await checkoutButton.click();
   await page.getByRole("button", { name: "Add a new address" }).click();
 
   await page.getByRole("textbox", { name: "Country" }).fill("Japan");
