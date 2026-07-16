@@ -3,18 +3,12 @@ name: Scan OWASP Juice Shop with ZAP and Playwright
 on:
   workflow_dispatch:
 
-# セルフホストマシンに ZAP および Playwright をインストールし、
-# OWASP Juice Shop に対して DAST を行うワークフローです。
-
 jobs:
   dast:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       ZAP_PROXY: http://127.0.0.1:8080
-      ZAP_JAVA_MAX_HEAP: 2048m
-      PLAYWRIGHT_HTML_OPEN: never
-      PLAYWRIGHT_SKIP_BROWSER_GC: 1
 
     steps:
       - name: Checkout repository
@@ -23,644 +17,164 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-
-      - name: Verify Node and npm on runner
-        shell: powershell
-        run: |
-          Write-Host '=== Node/npm diagnostics ==='
-          Write-Host "PATH: $env:PATH"
-
-          $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-          $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
-          $npmCmdCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
-
-          if ($nodeCmd) { Write-Host "node command: $($nodeCmd.Source)" }
-          if ($npmCmd) { Write-Host "npm command: $($npmCmd.Source)" }
-          if ($npmCmdCmd) { Write-Host "npm.cmd command: $($npmCmdCmd.Source)" }
-
-          where.exe node
-          where.exe npm
-
-          node -v
-          npm -v
+          node-version: 22
 
       - name: Install root dependencies
-        run: npm.cmd install
+        run: npm install
 
-      - name: Install Playwright Chromium browser
-        run: npx.cmd playwright install chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
 
-      - name: Stop stale listeners on 8080
-        shell: powershell
+      - name: Install Juice Shop dependencies
+        working-directory: ./juice-shop
+        run: npm install
+
+      - name: Start Juice Shop from repository
+        working-directory: ./juice-shop
         run: |
-          Write-Host '=== Stop stale listeners on port 8080 ==='
+          npm start > ../juice-shop.log 2>&1 &
+          echo $! > ../juice-shop.pid
 
-          $listenerConnections = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
-          if (-not $listenerConnections) {
-            Write-Host 'No listener found on port 8080.'
-            exit 0
-          }
-
-          foreach ($conn in $listenerConnections) {
-            $portOwnerProcessId = $conn.OwningProcess
-            Write-Host "Stopping process on port 8080: PID $portOwnerProcessId"
-            Stop-Process -Id $portOwnerProcessId -Force -ErrorAction SilentlyContinue
-          }
-
-          Start-Sleep -Seconds 2
-          $remaining = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
-          if ($remaining) {
-            Write-Error 'Port 8080 is still in use after cleanup attempt.'
-            $remaining | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
-            exit 1
-          }
+      - name: Wait for Juice Shop
+        run: |
+          timeout 240 bash -c 'until curl -fsS http://127.0.0.1:3000/ >/dev/null; do sleep 5; done'
 
       - name: Start OWASP ZAP
-        shell: powershell
         run: |
-          $zapCommand = $null
+          docker run -d \
+            --name zap \
+            --network=host \
+            -u zap \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -daemon \
+            -host 0.0.0.0 \
+            -port 8080 \
+            -config api.disablekey=true \
+            -config api.addrs.addr.name=.* \
+            -config api.addrs.addr.regex=true
 
-          $zapFromPath = Get-Command zap.bat -ErrorAction SilentlyContinue
-          if ($zapFromPath) {
-            $zapCommand = $zapFromPath.Source
-          }
-
-          if (-not $zapCommand) {
-            $candidatePaths = @(
-              'C:\Program Files\ZAP\Zed Attack Proxy\zap.bat',
-              'C:\Program Files (x86)\ZAP\Zed Attack Proxy\zap.bat'
-            )
-            foreach ($candidate in $candidatePaths) {
-              if (Test-Path $candidate) {
-                $zapCommand = $candidate
-                break
-              }
-            }
-          }
-
-          if (-not $zapCommand) {
-            Write-Error 'Could not find installed OWASP ZAP (zap.bat). Add it to PATH or install it in the default location.'
-            exit 1
-          }
-
-          $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
-          Write-Host "Using ZAP working directory: $zapWorkingDirectory"
-
-          $javaHeapArg = "-Xmx$env:ZAP_JAVA_MAX_HEAP"
-          $env:JAVA_OPTS = "$javaHeapArg $env:JAVA_OPTS".Trim()
-          $env:ZAP_JAVA_OPTS = "$javaHeapArg $env:ZAP_JAVA_OPTS".Trim()
-          Write-Host "Using ZAP Java heap setting: $javaHeapArg"
-
-          $zapArgs = @(
-            '-daemon',
-            '-host', '0.0.0.0',
-            '-port', '8080',
-            '-config', 'api.disablekey=true',
-            '-config', 'api.addrs.addr.name=.*',
-            '-config', 'api.addrs.addr.regex=true'
-          )
-
-          $javaCommand = Get-Command java -ErrorAction SilentlyContinue
-          $zapJar = Get-ChildItem -Path $zapWorkingDirectory -Filter 'zap-*.jar' -File -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-
-          $startupPlans = @(
-            @{
-              Name = 'zap.bat'
-              FilePath = $zapCommand
-              Arguments = $zapArgs
-            }
-          )
-
-          if ($javaCommand -and $zapJar) {
-            Write-Host "Java fallback is available: $($javaCommand.Source)"
-            Write-Host "Detected ZAP jar for fallback: $($zapJar.FullName)"
-
-            $javaArgs = @(
-              $javaHeapArg,
-              '-jar', $zapJar.FullName
-            ) + $zapArgs
-
-            $startupPlans += @{
-              Name = 'java-jar'
-              FilePath = $javaCommand.Source
-              Arguments = $javaArgs
-            }
-          } else {
-            Write-Host 'Java command or zap-*.jar not found. Java fallback is disabled.'
-          }
-
-          $process = $null
-          $localListener = $null
-          $selectedMode = $null
-
-          foreach ($plan in $startupPlans) {
-            Write-Host "Starting ZAP via $($plan.Name): $($plan.FilePath)"
-            $process = Start-Process -FilePath $plan.FilePath -ArgumentList $plan.Arguments -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
-
-            Set-Content -Path '.\zap-launcher.pid' -Value $process.Id
-            Set-Content -Path '.\zap.pid' -Value $process.Id
-            Set-Content -Path '.\zap-startup.mode' -Value $plan.Name
-            Write-Host "Started ZAP launcher process ID: $($process.Id)"
-
-            $localListener = $null
-            for ($attempt = 1; $attempt -le 12; $attempt++) {
-              $launcherAlive = $null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)
-              $localListener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-
-              if ($localListener) {
-                Set-Content -Path '.\zap.pid' -Value $localListener.OwningProcess
-                $selectedMode = $plan.Name
-                Write-Host "Local listener detected on startup check. PID: $($localListener.OwningProcess)"
-                break
-              }
-
-              Write-Host "Startup probe $attempt/12 ($($plan.Name)): local listener not ready yet (launcher alive=$launcherAlive)."
-              Start-Sleep -Seconds 5
-            }
-
-            if ($localListener) {
-              break
-            }
-
-            Write-Warning "Startup mode '$($plan.Name)' did not create a local listener on port 8080."
-            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 80 }
-            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 80 }
-
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-          }
-
-          if (-not $localListener) {
-            Write-Error 'No local listener on 127.0.0.1:8080/0.0.0.0:8080 after startup grace period (60s).'
-            Write-Host '=== java process snapshot ==='
-            Get-Process -Name java -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path
-            Write-Host '=== netstat for local 8080 ==='
-            Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess | Format-Table -AutoSize
-            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
-            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
-            exit 1
-          }
-
-          Write-Host "ZAP startup mode selected: $selectedMode"
-
-      - name: Check ZAP process started
-        shell: powershell
+      - name: Check ZAP container started
         run: |
-          Start-Sleep -Seconds 10
-          Write-Host '=== ZAP Process Check ==='
-
-          $launcherProcessId = $null
-          if (Test-Path '.\zap-launcher.pid') {
-            $launcherProcessId = Get-Content '.\zap-launcher.pid' -ErrorAction SilentlyContinue
-          }
-
-          $launcherAlive = $false
-          if ($launcherProcessId) {
-            $launcherAlive = $null -ne (Get-Process -Id $launcherProcessId -ErrorAction SilentlyContinue)
-            Write-Host "Launcher PID: $launcherProcessId (alive=$launcherAlive)"
-          }
-
-          Write-Host ''
-          Write-Host '=== Local LISTEN check for 8080 ==='
-          $portLines = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
-          $portLines | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
-
-          $listenerPid = $null
-          foreach ($line in $portLines) {
-            $listenerPid = $line.OwningProcess
-            break
-          }
-
-          if ($listenerPid) {
-            Set-Content -Path '.\zap.pid' -Value $listenerPid
-            Write-Host "Detected ZAP listener process ID: $listenerPid"
-            exit 0
-          }
-
-          if (-not $launcherAlive) {
-            Write-Warning 'ZAP launcher has exited and no local listener was found yet. Continuing to Wait for ZAP API for final readiness check.'
-            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 100 }
-            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 100 }
-            exit 0
-          }
-
-          Write-Host 'Launcher is alive but no local listener yet; continuing to Wait for ZAP API.'
+          sleep 10
+          echo "=== Container Status ==="
+          docker ps | grep zap || (echo "ERROR: ZAP container not found"; docker ps; exit 1)
+          echo ""
+          echo "=== ZAP Logs (first 100 lines) ==="
+          docker logs zap 2>&1 | head -100 || true
+          echo ""
+          echo "=== Network inspection ==="
+          docker inspect zap | grep -A 5 '"Ports"' || true
 
       - name: Wait for ZAP API
-        shell: powershell
         run: |
-          Write-Host 'Attempting to connect to ZAP API...'
-          Write-Host 'Timeout window: 60 attempts x 5 seconds (max 300 seconds)'
-
-          # Ensure localhost API checks do not go through corporate/global proxy.
-          $env:HTTP_PROXY = ''
-          $env:HTTPS_PROXY = ''
-          $env:http_proxy = ''
-          $env:https_proxy = ''
-          $env:NO_PROXY = '127.0.0.1,localhost'
-          $env:no_proxy = '127.0.0.1,localhost'
-          Write-Host "NO_PROXY: $env:NO_PROXY"
-
-          $candidateUrls = @('http://127.0.0.1:8080', 'http://localhost:8080')
-          $localIps = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-            Where-Object {
-              -not [string]::IsNullOrWhiteSpace($_.IPAddress) -and
-              $_.IPAddress -ne '127.0.0.1' -and
-              $_.IPAddress -match '^\d{1,3}(\.\d{1,3}){3}$' -and
-              $_.IPAddress -notlike '169.254.*' -and
-              $_.PrefixOrigin -ne 'WellKnown'
-            } |
-            Select-Object -ExpandProperty IPAddress -Unique
-
-          foreach ($ip in $localIps) {
-            $candidateUrls += "http://${ip}:8080"
-          }
-
-          $candidateUrls = $candidateUrls | Select-Object -Unique
-          Write-Host 'ZAP API candidate URLs:'
-          $candidateUrls | ForEach-Object { Write-Host "- $_" }
-
-          $zapRestartAttempted = $false
-          function Restart-ZapByBat {
-            Write-Warning 'No local listener on 8080. Attempting one-time ZAP restart via zap.bat.'
-
-            $zapCommand = $null
-            $zapFromPath = Get-Command zap.bat -ErrorAction SilentlyContinue
-            if ($zapFromPath) {
-              $zapCommand = $zapFromPath.Source
-            }
-
-            if (-not $zapCommand) {
-              $candidatePaths = @(
-                'C:\Program Files\ZAP\Zed Attack Proxy\zap.bat',
-                'C:\Program Files (x86)\ZAP\Zed Attack Proxy\zap.bat'
-              )
-              foreach ($candidate in $candidatePaths) {
-                if (Test-Path $candidate) {
-                  $zapCommand = $candidate
-                  break
-                }
-              }
-            }
-
-            if (-not $zapCommand) {
-              Write-Error 'Restart failed: zap.bat was not found.'
-              return $false
-            }
-
-            $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
-            $zapArgs = @(
-              '-daemon',
-              '-host', '0.0.0.0',
-              '-port', '8080',
-              '-config', 'api.disablekey=true',
-              '-config', 'api.addrs.addr.name=.*',
-              '-config', 'api.addrs.addr.regex=true'
-            )
-
-            $restartProcess = Start-Process -FilePath $zapCommand -ArgumentList $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
-            Set-Content -Path '.\zap-launcher.pid' -Value $restartProcess.Id
-            Set-Content -Path '.\zap.pid' -Value $restartProcess.Id
-            Set-Content -Path '.\zap-startup.mode' -Value 'restart-zap.bat'
-            Write-Host "Restarted ZAP launcher process ID: $($restartProcess.Id)"
-
-            for ($probe = 1; $probe -le 18; $probe++) {
-              $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($listener) {
-                Set-Content -Path '.\zap.pid' -Value $listener.OwningProcess
-                Write-Host "Local listener recovered after restart. PID: $($listener.OwningProcess)"
-                return $true
-              }
-
-              Start-Sleep -Seconds 5
-            }
-
-            Write-Error 'Restart attempt did not recover local listener on port 8080.'
-            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 100 }
-            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 100 }
-            return $false
-          }
-
-          $resolvedZapProxy = $null
-
-          for ($i = 1; $i -le 60; $i++) {
-            Write-Host "Attempt $i/60..."
-
-            try {
-              foreach ($baseUrl in $candidateUrls) {
-                if ([string]::IsNullOrWhiteSpace($baseUrl) -or $baseUrl -notmatch '^https?://[^\s]+$') {
-                  Write-Warning "Skipping invalid candidate URL: '$baseUrl'"
-                  continue
-                }
-
-                $versionUrl = "$baseUrl/JSON/core/view/version/"
-                $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 --url $versionUrl
-                if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($raw)) {
-                  continue
-                }
-
-                $response = $raw | ConvertFrom-Json
-                if ($response.version) {
-                  $resolvedZapProxy = $baseUrl
-                  $listenerLine = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-                  if ($listenerLine) {
-                    Set-Content -Path '.\zap.pid' -Value $listenerLine.OwningProcess
-                    Write-Host "Recorded ZAP listener process ID: $($listenerLine.OwningProcess)"
-                    $resolvedZapProxy = 'http://127.0.0.1:8080'
-                    Write-Host 'Using loopback ZAP proxy for subsequent steps: http://127.0.0.1:8080'
-                  }
-                  Write-Host "ZAP API is ready. Version: $($response.version) via $baseUrl"
-                  break
-                }
-              }
-
-              if ($resolvedZapProxy) {
-                Add-Content -Path $env:GITHUB_ENV -Value "ZAP_PROXY=$resolvedZapProxy"
-                Write-Host "Persisted ZAP_PROXY=$resolvedZapProxy for subsequent steps."
+          echo "Attempting to connect to ZAP API..."
+          for i in {1..60}; do
+            echo "Attempt $i/60..."
+            
+            if response=$(curl -v $ZAP_PROXY/JSON/core/view/version/ 2>&1); then
+              echo "curl succeeded"
+              if echo "$response" | grep -q '"version"'; then
+                echo "ZAP API is ready"
                 exit 0
-              }
+              fi
+              echo "Response: $response" | head -10
+            else
+              echo "curl failed with exit code $?"
+            fi
+            
+            sleep 3
+          done
 
-              if (-not $zapRestartAttempted -and $i -ge 3) {
-                $localListener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-                if (-not $localListener) {
-                  $zapRestartAttempted = $true
-                  $restartOk = Restart-ZapByBat
-                  if (-not $restartOk) {
-                    Write-Warning 'ZAP restart failed or listener was not recovered. Continuing retries for diagnostics.'
-                  }
-                }
-              }
-
-              if (($i % 15) -eq 0) {
-                Write-Host 'Current local LISTEN state for 8080:'
-                $localPortState = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
-                if ($localPortState) {
-                  $localPortState | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
-                } else {
-                  Write-Host 'No local LISTEN socket on port 8080.'
-                }
-              }
-            } catch {
-              $message = $_.Exception.Message
-              $statusCode = $null
-
-              if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response -and $_.Exception.Response.StatusCode) {
-                $statusCode = [int]$_.Exception.Response.StatusCode
-              }
-
-              if ($statusCode) {
-                Write-Host "Attempt $i failed with HTTP status ${statusCode}: $message"
-              } else {
-                Write-Host "Attempt $i failed: $message"
-              }
-
-              if (($i % 15) -eq 0) {
-                Write-Host 'Current local LISTEN state for 8080:'
-                $localPortState = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
-                if ($localPortState) {
-                  $localPortState | Select-Object LocalAddress, LocalPort, State, OwningProcess | Format-Table -AutoSize
-                } else {
-                  Write-Host 'No local LISTEN socket on port 8080.'
-                }
-
-                Write-Host 'Current outbound connections to remote :8080 (diagnostic):'
-                $remotePortState = netstat -ano | Select-String '^\s*TCP\s+\S+:\d+\s+\d+\.\d+\.\d+\.\d+:8080\s+'
-                if ($remotePortState) {
-                  $remotePortState | ForEach-Object { $_.Line }
-                } else {
-                  Write-Host 'No outbound connection to remote :8080 observed.'
-                }
-              }
-            }
-
-            Start-Sleep -Seconds 5
-          }
-
-          Write-Error 'ZAP API did not become ready in time.'
-          if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
-          if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
+          echo "ZAP API did not become ready in time"
+          echo ""
+          echo "=== Final diagnostics ==="
+          docker ps || true
+          docker logs zap || true
+          curl -v $ZAP_PROXY/ 2>&1 || true
           exit 1
 
       - name: Run Playwright via ZAP proxy
-        shell: powershell
         run: |
-          Write-Host '=== Preflight: ensure ZAP proxy is alive ==='
-
-          function Find-ZapBat {
-            $zapFromPath = Get-Command zap.bat -ErrorAction SilentlyContinue
-            if ($zapFromPath) {
-              return $zapFromPath.Source
-            }
-
-            $candidatePaths = @(
-              'C:\Program Files\ZAP\Zed Attack Proxy\zap.bat',
-              'C:\Program Files (x86)\ZAP\Zed Attack Proxy\zap.bat'
-            )
-
-            foreach ($candidate in $candidatePaths) {
-              if (Test-Path $candidate) {
-                return $candidate
-              }
-            }
-
-            return $null
-          }
-
-          function Wait-ZapApiReady {
-            param(
-              [int]$MaxAttempts = 24
-            )
-
-            for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-              $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($listener) {
-                Set-Content -Path '.\zap.pid' -Value $listener.OwningProcess
-              }
-
-              $raw = curl.exe --noproxy "*" --silent --show-error --max-time 5 --url 'http://127.0.0.1:8080/JSON/core/view/version/'
-              if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($raw)) {
-                try {
-                  $response = $raw | ConvertFrom-Json
-                  if ($response.version) {
-                    Write-Host "ZAP preflight API ready. Version: $($response.version)"
-                    return $true
-                  }
-                } catch {
-                  Write-Host "Preflight API parse failed on attempt ${attempt}: $($_.Exception.Message)"
-                }
-              }
-
-              Write-Host "Preflight probe ${attempt}/${MaxAttempts}: ZAP API not ready yet."
-              Start-Sleep -Seconds 5
-            }
-
-            return $false
-          }
-
-          # Clear proxy env vars so local preflight checks always hit loopback directly.
-          $env:HTTP_PROXY = ''
-          $env:HTTPS_PROXY = ''
-          $env:http_proxy = ''
-          $env:https_proxy = ''
-          $env:NO_PROXY = '127.0.0.1,localhost'
-          $env:no_proxy = '127.0.0.1,localhost'
-
-          $zapHealthy = Wait-ZapApiReady -MaxAttempts 6
-          if (-not $zapHealthy) {
-            Write-Warning 'ZAP is not healthy before Playwright. Attempting one-time restart.'
-
-            $zapCommand = Find-ZapBat
-            if (-not $zapCommand) {
-              Write-Error 'Could not find zap.bat for preflight restart.'
-              if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
-              if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
-              exit 1
-            }
-
-            $zapWorkingDirectory = Split-Path -Path $zapCommand -Parent
-            $zapArgs = @(
-              '-daemon',
-              '-host', '0.0.0.0',
-              '-port', '8080',
-              '-config', 'api.disablekey=true',
-              '-config', 'api.addrs.addr.name=.*',
-              '-config', 'api.addrs.addr.regex=true'
-            )
-
-            $oldPid = $null
-            if (Test-Path '.\zap.pid') {
-              $oldPid = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
-            }
-            if ($oldPid) {
-              Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
-            }
-
-            $restart = Start-Process -FilePath $zapCommand -ArgumentList $zapArgs -WorkingDirectory $zapWorkingDirectory -RedirectStandardOutput '.\zap.log' -RedirectStandardError '.\zap-error.log' -PassThru
-            Set-Content -Path '.\zap-launcher.pid' -Value $restart.Id
-            Set-Content -Path '.\zap.pid' -Value $restart.Id
-            Set-Content -Path '.\zap-startup.mode' -Value 'preflight-restart-zap.bat'
-            Write-Host "Restarted ZAP launcher process ID: $($restart.Id)"
-
-            $zapHealthy = Wait-ZapApiReady -MaxAttempts 24
-            if (-not $zapHealthy) {
-              Write-Error 'ZAP API was not reachable before Playwright, even after restart.'
-              Write-Host '=== netstat for local 8080 ==='
-              Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess | Format-Table -AutoSize
-              if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
-              if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
-              exit 1
-            }
-          }
-
-          $env:ZAP_PROXY = 'http://127.0.0.1:8080'
-          Write-Host "Using ZAP_PROXY=$env:ZAP_PROXY"
-
-          Write-Host 'Running Playwright tests...'
-          npx.cmd playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
-          Write-Host "Playwright tests completed with exit code: $LASTEXITCODE"
-
-          Write-Host 'Checking for playwright-report directory...'
-          if (Test-Path '.\playwright-report') {
-            Get-ChildItem '.\playwright-report' -Force
-          } else {
-            Write-Warning 'playwright-report not found'
-          }
-
-          Write-Host 'Verifying Juice Shop is still running...'
-          try {
-            $null = Invoke-WebRequest -Uri 'http://127.0.0.1:3000/' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
-            Write-Host 'Juice Shop is accessible'
-          } catch {
-            Write-Warning 'Juice Shop is not accessible'
-          }
+          echo "Running Playwright tests..."
+          npx playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
+          echo "Playwright tests completed with exit code: $?"
+          echo "Checking for playwright-report directory..."
+          ls -la playwright-report/ || echo "Warning: playwright-report not found"
+          
+          echo "Verifying Juice Shop is still running..."
+          curl -fsS http://127.0.0.1:3000/ > /dev/null && echo "✓ Juice Shop is accessible" || echo "✗ Juice Shop is not accessible"
 
       - name: Generate ZAP report with Automation Framework
-        shell: powershell
         run: |
-          $reportsDir = Join-Path $PWD 'reports'
-          New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null
+          set -euo pipefail
 
-          $automationTemplate = Join-Path $PWD 'zap\automation.yaml'
-          if (-not (Test-Path $automationTemplate)) {
-            Write-Error "Automation plan file not found: $automationTemplate"
+          mkdir -p reports
+
+          docker cp zap/automation.yaml zap:/tmp/automation.yaml
+          docker exec zap mkdir -p /zap/reports
+
+          # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
+          # --network=host によりコンテナ内の localhost はホストの localhost と同一。
+          echo "Starting ZAP Automation Framework..."
+          response=$(curl -s "$ZAP_PROXY/JSON/automation/action/runPlan/?filePath=/tmp/automation.yaml")
+          echo "API Response: $response"
+          planId=$(echo "$response" | grep -o '"planId":"[^"]*"' | cut -d'"' -f4 || echo "")
+          echo "Plan ID: $planId"
+
+          # planId が取得できない場合は即失敗。
+          if [ -z "$planId" ]; then
+            echo "ERROR: Failed to start automation plan (planId is empty)."
+            docker logs zap | tail -200 || true
             exit 1
-          }
+          fi
 
-          $hostReportDir = $reportsDir -replace '\\', '/'
-          $automationRunFile = Join-Path $env:RUNNER_TEMP 'automation-host.yaml'
-
-          $automationYaml = Get-Content -Path $automationTemplate -Raw
-          $automationYaml = $automationYaml -replace 'reportDir:\s*/zap/reports', "reportDir: '$hostReportDir'"
-          Set-Content -Path $automationRunFile -Value $automationYaml
-
-          Write-Host "Starting ZAP Automation Framework with plan: $automationRunFile"
-          $planPathForApi = [uri]::EscapeDataString(($automationRunFile -replace '\\', '/'))
-          $response = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/automation/action/runPlan/?filePath=$planPathForApi" -ErrorAction Stop
-          $responseJson = $response | ConvertTo-Json -Depth 10 -Compress
-          Write-Host "API Response: $responseJson"
-
-          $planId = "$($response.planId)"
-          Write-Host "Plan ID: $planId"
-          if ([string]::IsNullOrWhiteSpace($planId)) {
-            Write-Error 'Failed to start automation plan (planId is empty).'
-            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 300 }
-            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 300 }
-            exit 1
-          }
-
-          Write-Host 'Waiting for ZAP reports to be generated...'
-          $generated = $false
-          for ($i = 1; $i -le 270; $i++) {
-            $htmlReport = Join-Path $reportsDir 'zap-report.html'
-            $jsonReport = Join-Path $reportsDir 'zap-report.json'
-
-            if ((Test-Path $htmlReport) -and (Test-Path $jsonReport) -and ((Get-Item $htmlReport).Length -gt 0) -and ((Get-Item $jsonReport).Length -gt 0)) {
-              Write-Host 'Reports are present on host filesystem.'
-              $generated = $true
+          # レポート生成完了をポーリングで待機（最大 45 分）。
+          # planId は 0 も有効値になりうるため不正扱いしない。
+          echo "Waiting for ZAP reports to be generated..."
+          generated=false
+          for i in {1..270}; do
+            if docker exec zap sh -c 'test -s /zap/reports/zap-report.html && test -s /zap/reports/zap-report.json'; then
+              echo "Reports are present in container."
+              generated=true
               break
-            }
+            fi
 
-            try {
-              $progress = Invoke-RestMethod -Uri "$env:ZAP_PROXY/JSON/automation/view/planProgress/?planId=$planId" -ErrorAction Stop
-              $progressJson = $progress | ConvertTo-Json -Depth 10 -Compress
-            } catch {
-              $progressJson = '<empty>'
-            }
-            Write-Host "Plan Progress $i/270: $progressJson"
+            progress=$(curl -s "$ZAP_PROXY/JSON/automation/view/planProgress/?planId=$planId" || true)
+            echo "Plan Progress $i/270: ${progress:-<empty>}"
 
-            if ($progressJson -match '"(status|state|phase)":"(failed|error|aborted|stopped)"') {
-              Write-Error 'Automation plan entered a failure state.'
-              if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 300 }
-              if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 300 }
+            # 明確な失敗状態が返ってきた場合は待機を打ち切る。
+            if echo "$progress" | grep -Eiq '"(status|state|phase)":"(failed|error|aborted|stopped)"'; then
+              echo "ERROR: Automation plan entered a failure state."
+              docker logs zap | tail -300 || true
               exit 1
-            }
+            fi
+            sleep 10
+          done
 
-            Start-Sleep -Seconds 10
-          }
-
-          if (-not $generated) {
-            Write-Error 'ZAP reports were not generated within timeout.'
-            if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 300 }
-            if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 300 }
+          if [ "$generated" != "true" ]; then
+            echo "ERROR: ZAP reports were not generated within timeout."
+            echo "=== ZAP logs (last 300 lines) ==="
+            docker logs zap | tail -300 || true
             exit 1
-          }
+          fi
+          
+          echo "Final ZAP Container Logs:"
+          docker logs zap | tail -100
+          
+          # コンテナからレポートをコピー
+          echo "Copying reports from ZAP container..."
+          docker cp zap:/zap/reports/. reports || echo "Warning: Could not copy reports"
+          
+          # レポートが実際に生成されたか確認
+          echo "Checking generated reports:"
+          ls -la reports/
+          find reports -type f \( -name "*.html" -o -name "*.json" \)
 
-          Write-Host 'Checking generated reports:'
-          Get-ChildItem -Path $reportsDir -File
-
-          $requiredReports = @(
-            (Join-Path $reportsDir 'zap-report.html'),
-            (Join-Path $reportsDir 'zap-report.json')
-          )
-          foreach ($file in $requiredReports) {
-            if (-not (Test-Path $file) -or (Get-Item $file).Length -eq 0) {
-              Write-Error "Required ZAP report is missing or empty: $file"
-              exit 1
-            }
-          }
+          if [ ! -s reports/zap-report.html ] || [ ! -s reports/zap-report.json ]; then
+            echo "ERROR: Required ZAP reports are missing or empty."
+            echo "Expected files: reports/zap-report.html and reports/zap-report.json"
+            exit 1
+          fi
 
       - name: Upload Playwright report
         if: always()
@@ -686,76 +200,17 @@ jobs:
           name: runtime-logs
           path: |
             juice-shop.log
-            zap.log
-            zap-error.log
 
-      - name: Show runtime logs
+      - name: Show container logs
         if: always()
-        shell: powershell
         run: |
-          if (Test-Path '.\juice-shop.log') { Get-Content '.\juice-shop.log' -Tail 200 }
-          if (Test-Path '.\zap.log') { Get-Content '.\zap.log' -Tail 200 }
-          if (Test-Path '.\zap-error.log') { Get-Content '.\zap-error.log' -Tail 200 }
+          docker logs zap || true
+          tail -n 200 juice-shop.log || true
 
       - name: Cleanup
         if: always()
-        shell: powershell
         run: |
-          if (Test-Path '.\juice-shop.pid') {
-            $juiceShopPid = Get-Content '.\juice-shop.pid' -ErrorAction SilentlyContinue
-            if ($juiceShopPid) {
-              Stop-Process -Id $juiceShopPid -Force -ErrorAction SilentlyContinue
-            }
-          }
-
-          # Ensure no remaining Juice Shop listener keeps DB/files locked.
-          $juiceListeners = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
-          foreach ($listener in $juiceListeners) {
-            Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
-          }
-
-          Write-Host '=== Reset Juice Shop data ==='
-          $candidateRoots = @(
-            (Join-Path $PWD 'juice-shop'),
-            $PWD
-          ) | Select-Object -Unique
-
-          foreach ($root in $candidateRoots) {
-            if (-not (Test-Path $root)) {
-              continue
-            }
-
-            $sqliteDbPath = Join-Path $root 'data\juiceshop.sqlite'
-            if (Test-Path $sqliteDbPath) {
-              Write-Host "Removing SQLite DB: $sqliteDbPath"
-              Remove-Item -Path $sqliteDbPath -Force -ErrorAction SilentlyContinue
-            }
-
-            $marsDbPath = Join-Path $root 'data\marsdb'
-            if (Test-Path $marsDbPath) {
-              Write-Host "Removing MarsDB data: $marsDbPath"
-              Remove-Item -Path $marsDbPath -Recurse -Force -ErrorAction SilentlyContinue
-            }
-
-            $uploadsDir = Join-Path $root 'frontend\dist\frontend\assets\public\images\uploads'
-            if (Test-Path $uploadsDir) {
-              Write-Host "Cleaning uploaded images in: $uploadsDir"
-              Get-ChildItem -Path $uploadsDir -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notin @('default.svg', 'defaultAdmin.png') } |
-                Remove-Item -Force -ErrorAction SilentlyContinue
-            }
-          }
-
-          if (Test-Path '.\zap.pid') {
-            $zapProcessId = Get-Content '.\zap.pid' -ErrorAction SilentlyContinue
-            if ($zapProcessId) {
-              Stop-Process -Id $zapProcessId -Force -ErrorAction SilentlyContinue
-            }
-          }
-
-          if (Test-Path '.\zap-launcher.pid') {
-            $zapLauncherProcessId = Get-Content '.\zap-launcher.pid' -ErrorAction SilentlyContinue
-            if ($zapLauncherProcessId) {
-              Stop-Process -Id $zapLauncherProcessId -Force -ErrorAction SilentlyContinue
-            }
-          }
+          if [ -f juice-shop.pid ]; then
+            kill "$(cat juice-shop.pid)" || true
+          fi
+          docker rm -f zap || true
