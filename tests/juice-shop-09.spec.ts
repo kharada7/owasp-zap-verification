@@ -74,11 +74,20 @@ test("add-cart-and-buy-and-check-order-history", async ({ page }) => {
   const reviewsToggle = reviewDialog.getByRole("button", {
     name: /Reviews \(\d+\)/,
   });
-  await reviewsToggle.click();
+  const isExpanded = await reviewsToggle.getAttribute("aria-expanded");
+  if (isExpanded !== "true") {
+    await reviewsToggle.click();
+  }
 
-  const helpfulReviewButtons = reviewDialog.getByRole("button", {
+  const reviewsRegion = reviewDialog.getByRole("region", {
+    name: /Reviews \(\d+\)/,
+  });
+  await expect(reviewsRegion).toBeVisible();
+
+  const helpfulReviewButtons = reviewsRegion.getByRole("button", {
     name: "Rate a helpful review",
   });
+  await expect(helpfulReviewButtons.first()).toBeVisible();
   const helpfulReviewButtonCount = await helpfulReviewButtons.count();
   expect(helpfulReviewButtonCount).toBeGreaterThan(0);
 
