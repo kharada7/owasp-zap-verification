@@ -23,16 +23,53 @@ export const stabilizeUi = async (page: Page) => {
   await neutralizeCookieBanner(page);
 };
 
+// アカウントメニューを安定して開く。オーバーレイ干渉時は再試行する。
+export const openAccountMenuSafely = async (page: Page) => {
+  for (let i = 0; i < 4; i++) {
+    await stabilizeUi(page);
+    const account = page.getByRole("button", { name: "Show/hide account menu" });
+    await expect(account).toBeVisible();
+    await account.click();
+
+    const menu = page.locator(".cdk-overlay-pane [role='menuitem']").first();
+    if (await menu.isVisible().catch(() => false)) {
+      return;
+    }
+  }
+  throw new Error("Account menu did not open.");
+};
+
+// メニューアイテムを安定してクリックする。表示されていなければメニューを再オープンする。
+export const clickMenuItemSafely = async (
+  page: Page,
+  name: string | RegExp,
+) => {
+  for (let i = 0; i < 4; i++) {
+    await dismissWelcomeBanner(page);
+    await closeBlockingOverlays(page);
+
+    const item = page.getByRole("menuitem", { name });
+    if (await item.isVisible().catch(() => false)) {
+      await item.click();
+      return;
+    }
+
+    await openAccountMenuSafely(page);
+  }
+
+  throw new Error(`Menu item not clickable: ${String(name)}`);
+};
+
 // アカウントメニューを開いてログインをクリックする。オーバーレイが邪魔している場合は閉じる。最大3回までリトライ。
 export const openAccountMenuAndClickLogin = async (page: Page) => {
   for (let attempt = 1; attempt <= 3; attempt++) {
     await stabilizeUi(page);
 
-    await page.locator("#navbarAccount").click({ timeout: 10000 });
+    await openAccountMenuSafely(page);
     await dismissWelcomeBanner(page);
     await closeBlockingOverlays(page);
 
-    const loginInMenu = page.locator(".cdk-overlay-pane #navbarLoginButton").first();
+    const loginInMenu = page.getByRole("menuitem", { name: /Login/i }).first();
     await loginInMenu.waitFor({ state: "visible", timeout: 10000 });
 
     try {

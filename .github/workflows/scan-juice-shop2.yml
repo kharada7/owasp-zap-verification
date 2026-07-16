@@ -99,8 +99,21 @@ jobs:
 
       - name: Run Playwright via ZAP proxy (stateless set)
         run: |
+          set -euo pipefail
+
+          run_batch () {
+            echo "Running batch: $*"
+            if ! npx playwright test $* --project=chromium --workers=1 --timeout=120000 --reporter=line; then
+              echo "Batch failed. Retrying last failed tests once..."
+              npx playwright test --last-failed --project=chromium --workers=1 --timeout=120000 --reporter=line
+            fi
+          }
+
           echo "Running stateless Playwright tests..."
-          npx playwright test ./tests/ --project=chromium --workers=1 --timeout=120000 --reporter=html --reporter=line --grep-invert "change-password-from-privacy-security"
+          run_batch ./tests/juice-shop-01.spec.ts ./tests/juice-shop-02.spec.ts ./tests/juice-shop-03.spec.ts ./tests/juice-shop-04.spec.ts ./tests/juice-shop-05.spec.ts ./tests/juice-shop-06.spec.ts ./tests/juice-shop-07.spec.ts
+          run_batch ./tests/juice-shop-08.spec.ts ./tests/juice-shop-09.spec.ts ./tests/juice-shop-10.spec.ts ./tests/juice-shop-11.spec.ts ./tests/juice-shop-12.spec.ts
+          run_batch ./tests/juice-shop-13.spec.ts ./tests/juice-shop-14.spec.ts ./tests/juice-shop-15.spec.ts ./tests/juice-shop-16.spec.ts ./tests/juice-shop-17.spec.ts ./tests/juice-shop-19.spec.ts
+
           echo "Stateless Playwright tests completed with exit code: $?"
           echo "Checking for playwright-report directory..."
           ls -la playwright-report/ || echo "Warning: playwright-report not found"

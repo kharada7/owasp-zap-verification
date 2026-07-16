@@ -1,15 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
+  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   completeJuiceShopPurchase,
   dismissWelcomeBanner,
+  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
+  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
-// ログイン後に購入を完亁E��、My Payment Options から新しいカードを追加するシナリオ
+// ログイン後に購入を完亁E��、My Payment Options から新しいカードを追加するシナリオ
 test("add-payment-method", async ({ page }) => {
   test.setTimeout(60000);
 
@@ -46,21 +49,18 @@ test("add-payment-method", async ({ page }) => {
     page.getByRole("heading", { name: "Thank you for your purchase!" }),
   ).toBeVisible();
 
-  // Account ↁEOrders & Payment ↁEMy Payment Options の頁E��移動する、E
-  await page.getByRole("button", { name: "Show/hide account menu" }).click();
-  await page
-    .getByRole("menuitem", { name: "Show Orders and Payment Menu" })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Go to saved payment methods page" })
-    .click();
+  // Account ↁEOrders & Payment ↁEMy Payment Options の頁E��移動する、E
+  await stabilizeUi(page);
+  await openAccountMenuSafely(page);
+  await clickMenuItemSafely(page, "Show Orders and Payment Menu");
+  await clickMenuItemSafely(page, "Go to saved payment methods page");
 
   await expect(page).toHaveURL(/#\/saved-payment-methods$/);
 
-  // Add new card をクリチE��して展開する、E
+  // Add new card をクリチE��して展開する、E
   await page.getByRole("button", { name: /Add new card/i }).click();
 
-  // カード情報を�E力して Submit を押す、E
+  // カード情報を�E力して Submit を押す、E
   await page.getByRole("textbox", { name: "Name" }).fill("Taro Juice");
   await page.getByRole("spinbutton", { name: "Card Number" }).fill("4242424242424242");
   await page.getByRole("combobox", { name: "Expiry Month" }).selectOption("12");

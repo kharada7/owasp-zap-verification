@@ -1,11 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
+  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   dismissWelcomeBanner,
+  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
+  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
 // ログイン後に Privacy & Security からチE�Eタエクスポ�Eトを要求するシナリオ
@@ -36,26 +39,12 @@ test("request-data-export", async ({ page }) => {
   await login(page, "jim@juice-sh.op", "ncc-1701");
 
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
-  await neutralizeCookieBanner(page);
-  await dismissWelcomeBanner(page);
-  await closeBlockingOverlays(page);
+  await stabilizeUi(page);
 
   // Account ↁEPrivacy & Security ↁERequest Data Export の頁E��移動する、E
-  await page.getByRole("button", { name: "Show/hide account menu" }).click();
-  await dismissWelcomeBanner(page);
-  await closeBlockingOverlays(page);
-
-  const privacyMenu = page.getByRole("menuitem", {
-    name: "Show Privacy and Security Menu",
-  });
-  await expect(privacyMenu).toBeVisible();
-  await privacyMenu.click();
-
-  const dataExportMenu = page.getByRole("menuitem", {
-    name: "Go to data export page",
-  });
-  await expect(dataExportMenu).toBeVisible();
-  await dataExportMenu.click();
+  await openAccountMenuSafely(page);
+  await clickMenuItemSafely(page, "Show Privacy and Security Menu");
+  await clickMenuItemSafely(page, "Go to data export page");
 
   await expect(page).toHaveURL(/#\/privacy-security\/data-export$/);
 

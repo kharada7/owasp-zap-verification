@@ -1,14 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
+  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   dismissWelcomeBanner,
+  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
+  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
-// ログイン後に Privacy & Security から Last Login IP ペ�Eジへ移動するシナリオ
+// ログイン後に Privacy & Security から Last Login IP ペ�Eジへ移動するシナリオ
 test("navigate-to-last-login-ip", async ({ page }) => {
   test.setTimeout(60000);
 
@@ -38,14 +41,11 @@ test("navigate-to-last-login-ip", async ({ page }) => {
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
 
-  // Account ↁEPrivacy & Security ↁELast Login IP の頁E��移動する、E
-  await page.getByRole("button", { name: "Show/hide account menu" }).click();
-  await page
-    .getByRole("menuitem", { name: "Show Privacy and Security Menu" })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Go to last login ip page" })
-    .click();
+  // Account ↁEPrivacy & Security ↁELast Login IP の頁E��移動する、E
+  await stabilizeUi(page);
+  await openAccountMenuSafely(page);
+  await clickMenuItemSafely(page, "Show Privacy and Security Menu");
+  await clickMenuItemSafely(page, "Go to last login ip page");
 
   await expect(page).toHaveURL(/#\/privacy-security\/last-login-ip$/);
   await expect(page.getByRole("heading", { name: "Last Login IP", exact: true })).toBeVisible();

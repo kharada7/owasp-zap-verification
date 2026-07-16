@@ -1,11 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
+  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   dismissWelcomeBanner,
+  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
+  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
 // ログイン後に購入を完亁E��、Privacy Policy ペ�Eジへ移動するシナリオ
@@ -91,13 +94,10 @@ test("add-privacy-policy-navigation", async ({ page }) => {
   ).toBeVisible();
 
   // Account ↁEPrivacy & Security ↁEPrivacy Policy の頁E��移動する、E
-  await page.getByRole("button", { name: "Show/hide account menu" }).click();
-  await page
-    .getByRole("menuitem", { name: "Show Privacy and Security Menu" })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Go to privacy policy page" })
-    .click();
+  await stabilizeUi(page);
+  await openAccountMenuSafely(page);
+  await clickMenuItemSafely(page, "Show Privacy and Security Menu");
+  await clickMenuItemSafely(page, "Go to privacy policy page");
 
   await expect(page).toHaveURL(/#\/privacy-security\/privacy-policy$/);
   await expect(page.getByRole("heading", { name: "Privacy Policy", exact: true })).toBeVisible();

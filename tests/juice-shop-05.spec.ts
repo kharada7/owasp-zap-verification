@@ -1,11 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
+  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   dismissWelcomeBanner,
+  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
+  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
 // ログイン後に、ユーザープロフィールページにアクセスして、プロフィール画像とユーザー名を更新するシナリオ
@@ -38,12 +41,9 @@ test("access-user-profile-and-update-profile", async ({ page }) => {
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
 
-  // aria-label が "Show/hide account menu" のボタンをクリックする
-  await page.getByRole("button", { name: "Show/hide account menu" }).click();
-
-  // アカウントメニューの "Go to user profile" メニュー項目をクリックする
-  await expect(page.getByRole("menu")).toBeVisible();
-  await page.getByRole("menuitem", { name: "Go to user profile" }).click();
+  await stabilizeUi(page);
+  await openAccountMenuSafely(page);
+  await clickMenuItemSafely(page, "Go to user profile");
 
   // URL が profile に遷移することを確認する
   await expect(page).toHaveURL(/\/profile$/);
