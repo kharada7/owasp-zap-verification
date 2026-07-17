@@ -43,9 +43,6 @@ test("request-data-export", async ({ page }) => {
 
   // Account ↁEPrivacy & Security ↁERequest Data Export の頁E��移動する、E
   await page.getByRole("button", { name: "Show/hide account menu" }).click();
-  await dismissWelcomeBanner(page);
-  await closeBlockingOverlays(page);
-
   const privacyMenu = page.getByRole("menuitem", {
     name: "Show Privacy and Security Menu",
   });

@@ -10,7 +10,6 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-// 繝ｭ繧ｰ繧､繝ｳ蠕後↓ Privacy & Security 縺九ｉ繝代せ繝ｯ繝ｼ繝峨ｒ螟画峩縺吶ｋ繧ｷ繝翫Μ繧ｪ
 test("change-password-from-privacy-security", async ({ page }) => {
   test.setTimeout(60000);
 
