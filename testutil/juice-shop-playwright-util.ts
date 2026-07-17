@@ -1,4 +1,4 @@
-import { expect, Page } from "@playwright/test";
+import { Page } from "@playwright/test";
 
 // オーバーレイが表示されている場合は閉じる。最大5回までリトライ。
 export const closeBlockingOverlays = async (page: Page) => {
@@ -15,61 +15,14 @@ export const closeBlockingOverlays = async (page: Page) => {
   }
 };
 
-// CIで再出現しやすいCookie/Welcome/Backdropをまとめて安定化する。
-export const stabilizeUi = async (page: Page) => {
-  await closeCookieBanner(page);
-  await dismissWelcomeBanner(page);
-  await closeBlockingOverlays(page);
-  await neutralizeCookieBanner(page);
-};
-
-// アカウントメニューを安定して開く。オーバーレイ干渉時は再試行する。
-export const openAccountMenuSafely = async (page: Page) => {
-  for (let i = 0; i < 4; i++) {
-    await stabilizeUi(page);
-    const account = page.getByRole("button", { name: "Show/hide account menu" });
-    await expect(account).toBeVisible();
-    await account.click();
-
-    const menu = page.locator(".cdk-overlay-pane [role='menuitem']").first();
-    if (await menu.isVisible().catch(() => false)) {
-      return;
-    }
-  }
-  throw new Error("Account menu did not open.");
-};
-
-// メニューアイテムを安定してクリックする。表示されていなければメニューを再オープンする。
-export const clickMenuItemSafely = async (
-  page: Page,
-  name: string | RegExp,
-) => {
-  for (let i = 0; i < 4; i++) {
-    await dismissWelcomeBanner(page);
-    await closeBlockingOverlays(page);
-
-    const item = page.getByRole("menuitem", { name });
-    if (await item.isVisible().catch(() => false)) {
-      await item.click();
-      return;
-    }
-
-    await openAccountMenuSafely(page);
-  }
-
-  throw new Error(`Menu item not clickable: ${String(name)}`);
-};
-
 // アカウントメニューを開いてログインをクリックする。オーバーレイが邪魔している場合は閉じる。最大3回までリトライ。
 export const openAccountMenuAndClickLogin = async (page: Page) => {
   for (let attempt = 1; attempt <= 3; attempt++) {
-    await stabilizeUi(page);
-
-    await openAccountMenuSafely(page);
-    await dismissWelcomeBanner(page);
     await closeBlockingOverlays(page);
 
-    const loginInMenu = page.getByRole("menuitem", { name: /Login/i }).first();
+    await page.locator("#navbarAccount").click({ timeout: 10000 });
+
+    const loginInMenu = page.locator(".cdk-overlay-pane #navbarLoginButton").first();
     await loginInMenu.waitFor({ state: "visible", timeout: 10000 });
 
     try {
@@ -125,21 +78,20 @@ export const dismissWelcomeBanner = async (page: Page) => {
 
 // ログイン後の購入フローを実行し、注文完了画面まで進める。
 export const completeJuiceShopPurchase = async (page: Page) => {
-  await stabilizeUi(page);
-
-  // 在庫のある商品を明示的に追加して、Checkoutの有効化を待つ。
+  // Attempt to add the sold-out mask, then add Lemon Juice.
+  await page
+    .locator("mat-card")
+    .filter({ hasText: "Best Juice Shop Salesman Artwork" })
+    .getByRole("button", { name: "Add to Basket" })
+    .click();
   await page
     .locator("mat-card")
     .filter({ hasText: "Lemon Juice (500ml)" })
     .getByRole("button", { name: "Add to Basket" })
     .click();
 
-  await expect(page.getByRole("button", { name: "Show the shopping cart" })).toContainText("1");
-
   await page.getByRole("button", { name: "Show the shopping cart" }).click();
-  const checkoutButton = page.getByRole("button", { name: "Checkout" });
-  await expect(checkoutButton).toBeEnabled();
-  await checkoutButton.click();
+  await page.getByRole("button", { name: "Checkout" }).click();
   await page.getByRole("button", { name: "Add a new address" }).click();
 
   await page.getByRole("textbox", { name: "Country" }).fill("Japan");

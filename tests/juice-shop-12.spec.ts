@@ -1,15 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
-  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   completeJuiceShopPurchase,
   dismissWelcomeBanner,
-  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
-  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
 // ログイン後に啁E��をカートに入れて購入し、その征ERecycle で回収依頼を送信するシナリオ
@@ -49,12 +46,12 @@ test("add-cart-and-buy-and-recycle", async ({ page }) => {
     page.getByRole("heading", { name: "Thank you for your purchase!" }),
   ).toBeVisible();
 
-  // 右上�E Account アイコンから Recycle へ移動する、E
-  await stabilizeUi(page);
-  await openAccountMenuSafely(page);
-  await clickMenuItemSafely(page, "Show Orders and Payment Menu");
-  await clickMenuItemSafely(page, "Go to recycling page");
-
+  // 右上�E Account アイコンから Recycle へ移動する。
+  await page.getByRole("button", { name: "Show/hide account menu" }).click();
+  await page
+    .getByRole("menuitem", { name: "Show Orders and Payment Menu" })
+    .click();
+  await page.getByRole("menuitem", { name: "Go to recycling page" }).click();
   await expect(page).toHaveURL(/#\/recycle$/);
 
   // Quantity に 10 を�E力する、E

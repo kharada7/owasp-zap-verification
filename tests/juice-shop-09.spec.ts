@@ -1,15 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
-  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   completeJuiceShopPurchase,
   dismissWelcomeBanner,
-  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
-  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
 // ログイン後に啁E��をカートに入れて購入し、購入履歴を確認するシナリオ
@@ -49,12 +46,14 @@ test("add-cart-and-buy-and-check-order-history", async ({ page }) => {
     page.getByRole("heading", { name: "Thank you for your purchase!" }),
   ).toBeVisible();
 
-  // 購入履歴ペ�Eジにアクセスして、購入した啁E��が表示されることを確認する、E
-  await stabilizeUi(page);
-  await openAccountMenuSafely(page);
-  await clickMenuItemSafely(page, "Show Orders and Payment Menu");
-  await clickMenuItemSafely(page, "Go to order history page");
-
+  // 購入履歴ページにアクセスして、購入した商品が表示されることを確認する、E
+  await page.getByRole("button", { name: "Show/hide account menu" }).click();
+  await page
+    .getByRole("menuitem", { name: "Show Orders and Payment Menu" })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Go to order history page" })
+    .click();
   await expect(page).toHaveURL(/#\/order-history$/);
 
   // 一番上�E注斁E���EレビューアイコンをクリチE��して、レビュー用ダイアログを開く、E

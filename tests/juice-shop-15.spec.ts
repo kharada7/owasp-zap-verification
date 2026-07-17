@@ -1,15 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { login } from "../pages/login";
 import {
-  clickMenuItemSafely,
   closeBlockingOverlays,
   closeCookieBanner,
   completeJuiceShopPurchase,
   dismissWelcomeBanner,
-  openAccountMenuSafely,
   openAccountMenuAndClickLogin,
   neutralizeCookieBanner,
-  stabilizeUi,
 } from "../testutil/juice-shop-playwright-util";
 
 // ログイン後に購入を完亁E��、Digital Wallet から残高を追加するシナリオ
@@ -49,17 +46,20 @@ test("add-digital-wallet-balance", async ({ page }) => {
     page.getByRole("heading", { name: "Thank you for your purchase!" }),
   ).toBeVisible();
 
-  // Account ↁEOrders & Payment ↁEDigital Wallet の頁E��移動する、E
-  await stabilizeUi(page);
-  await openAccountMenuSafely(page);
-  await clickMenuItemSafely(page, "Show Orders and Payment Menu");
-  await clickMenuItemSafely(page, "Go to wallet page");
+  await page.getByRole("button", { name: "Show/hide account menu" }).click();
+  await page
+    .getByRole("menuitem", { name: "Show Orders and Payment Menu" })
+    .click();
+  await page.getByRole("menuitem", { name: "Go to wallet page" }).click();
 
+  // Account ↁEOrders & Payment ↁEDigital Wallet の頁E��移動する、E
   await expect(page).toHaveURL(/#\/wallet$/);
 
   // Amount に 100 を�E力して Deposit をクリチE��する、E
   await page.getByRole("spinbutton", { name: "Enter an amount" }).fill("100");
-  await page.getByRole("button", { name: "Button to continue to payment" }).click();
+  await page
+    .getByRole("button", { name: "Button to continue to payment" })
+    .click();
 
   await expect(page).toHaveURL(/#\/payment\/wallet$/);
 });

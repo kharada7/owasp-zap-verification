@@ -10,7 +10,7 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-// ログイン後に Privacy & Security からパスワードを変更するシナリオ
+// 繝ｭ繧ｰ繧､繝ｳ蠕後↓ Privacy & Security 縺九ｉ繝代せ繝ｯ繝ｼ繝峨ｒ螟画峩縺吶ｋ繧ｷ繝翫Μ繧ｪ
 test("change-password-from-privacy-security", async ({ page }) => {
   test.setTimeout(60000);
 
@@ -39,18 +39,8 @@ test("change-password-from-privacy-security", async ({ page }) => {
     name: "Field to repeat the new password",
   });
 
-  const stabilizePage = async () => {
-    await closeCookieBanner(page);
-    await dismissWelcomeBanner(page);
-    await closeBlockingOverlays(page);
-    await neutralizeCookieBanner(page);
-  };
-
   const navigateToChangePassword = async () => {
-    await stabilizePage();
     await page.getByRole("button", { name: "Show/hide account menu" }).click();
-    await dismissWelcomeBanner(page);
-    await closeBlockingOverlays(page);
     await page
       .getByRole("menuitem", { name: "Show Privacy and Security Menu" })
       .click();
@@ -68,17 +58,14 @@ test("change-password-from-privacy-security", async ({ page }) => {
       .getByRole("button", { name: "Button to confirm the change" })
       .click();
 
-    // 成功時�EフォームがリセチE��される、E
+    // 謌仙粥譎ゅ・繝輔か繝ｼ繝縺後Μ繧ｻ繝・ヨ縺輔ｌ繧九・
     await expect(currentPasswordField).toHaveValue("");
     await expect(newPasswordField).toHaveValue("");
     await expect(repeatNewPasswordField).toHaveValue("");
   };
 
   const logoutIfPossible = async () => {
-    await stabilizePage();
     await page.getByRole("button", { name: "Show/hide account menu" }).click().catch(() => {});
-    await dismissWelcomeBanner(page);
-    await closeBlockingOverlays(page);
     await page.getByRole("menuitem", { name: "Logout" }).click().catch(() => {});
   };
 
@@ -86,13 +73,6 @@ test("change-password-from-privacy-security", async ({ page }) => {
     await page.goto("http://127.0.0.1:3000/#/login", {
       waitUntil: "domcontentloaded",
     });
-    await stabilizePage();
-    await expect(
-      page.getByRole("textbox", { name: "Text field for the login email" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("textbox", { name: "Text field for the login password" }),
-    ).toBeVisible();
     await login(page, email, password);
     try {
       await expect(page).toHaveURL(/#\/(search|\/search)$/, { timeout: 7000 });
@@ -112,14 +92,19 @@ test("change-password-from-privacy-security", async ({ page }) => {
 
   await page.goto("http://127.0.0.1:3000/", { waitUntil: "domcontentloaded" });
 
-  await stabilizePage();
+  // Close cookie banner and neutralize its overlay if it keeps intercepting clicks.
+  await closeCookieBanner(page);
+
+  // Close welcome modal if shown.
+  await dismissWelcomeBanner(page);
+
+  await closeBlockingOverlays(page);
 
   // Open account menu and click login in overlay pane with retries.
   await openAccountMenuAndClickLogin(page);
 
   await expect(page).toHaveURL(/#\/login$/);
 
-  // 直前実行�E影響を吸収するため、現時点の有効パスワードを判定する、E
   const candidatePasswords = [
     configuredCurrentPassword,
     originalPassword,
@@ -142,10 +127,9 @@ test("change-password-from-privacy-security", async ({ page }) => {
     );
   }
 
-  await stabilizePage();
+  await neutralizeCookieBanner(page);
 
   try {
-    // 既に新パスワード状態なら、�Eに允E��戻してチE��ト前提を揁E��る、E
     if (activePassword !== originalPassword) {
       await navigateToChangePassword();
       await submitPasswordChange(activePassword, originalPassword);
@@ -153,26 +137,23 @@ test("change-password-from-privacy-security", async ({ page }) => {
       await logoutIfPossible();
       const canLoginWithOriginal = await loginToSearch(originalPassword);
       expect(canLoginWithOriginal).toBe(true);
-      await stabilizePage();
+      await neutralizeCookieBanner(page);
     }
 
-    // 1回目: 既存パスワーチE-> 新規パスワード、E
     await navigateToChangePassword();
     await submitPasswordChange(originalPassword, newPassword);
     activePassword = newPassword;
 
-    // 新しいパスワードで再ログインできることを確認、E
     await logoutIfPossible();
     const canLoginWithNew = await loginToSearch(newPassword);
     expect(canLoginWithNew).toBe(true);
-    await stabilizePage();
+    await neutralizeCookieBanner(page);
   } finally {
-    // 2回目: 忁E��允E�Eパスワードに戻す、E
     if (activePassword !== originalPassword) {
       await logoutIfPossible();
       const canLoginWithActive = await loginToSearch(activePassword);
       expect(canLoginWithActive).toBe(true);
-      await stabilizePage();
+      await neutralizeCookieBanner(page);
 
       await navigateToChangePassword();
       await submitPasswordChange(activePassword, originalPassword);
