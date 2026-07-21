@@ -101,14 +101,18 @@ jobs:
 
           RESULT=0
           FAILED_SPECS=()
+          mkdir -p playwright-logs
           shopt -s nullglob
           TEST_SPECS=(./tests/juice-shop-*.spec.ts)
 
           for spec in "${TEST_SPECS[@]}"; do
             scenario=$(basename "$spec")
+            log_file="playwright-logs/${scenario}.log"
             echo "=== Running ${scenario} ==="
 
-            if ! npx playwright test "$spec" --project=chromium --timeout=120000 --reporter=html --reporter=line; then
+            if npx playwright test "$spec" --project=chromium --timeout=120000 --reporter=html --reporter=line 2>&1 | tee "$log_file"; then
+              echo "PASSED SCENARIO: ${scenario}"
+            else
               echo "FAILED SCENARIO: ${scenario}" >&2
               FAILED_SPECS+=("${scenario}")
               RESULT=1
@@ -207,6 +211,13 @@ jobs:
           path: |
             playwright-report
             test-results
+
+      - name: Upload Playwright logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-logs
+          path: playwright-logs
 
       - name: Upload ZAP report
         if: always()
