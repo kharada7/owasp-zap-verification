@@ -78,10 +78,10 @@ export default defineConfig({
   ],
 
   /* Run Juice Shop before tests and wait until it is reachable. */
-  // webServer: {
-  //   command: 'npm --prefix juice-shop start',
-  //   url: 'http://127.0.0.1:3000/',
-  //   reuseExistingServer: true,
-  //   timeout: 240000,
-  // },
+  webServer: {
+    command: 'npm --prefix juice-shop start',
+    url: 'http://127.0.0.1:3000/',
+    reuseExistingServer: true,
+    timeout: 240000,
+  },
 });

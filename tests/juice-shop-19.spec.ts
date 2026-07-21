@@ -8,7 +8,7 @@ import {
   neutralizeCookieBanner,
 } from "../testutil/juice-shop-playwright-util";
 
-// ログイン後に Privacy & Security から Last Login IP ペ�Eジへ移動するシナリオ
+// ログイン後に Privacy & Security から Last Login IP ページへ移動するシナリオ
 test("navigate-to-last-login-ip", async ({ page }) => {
   test.setTimeout(60000);
 
@@ -27,6 +27,9 @@ test("navigate-to-last-login-ip", async ({ page }) => {
   await dismissWelcomeBanner(page);
 
   await closeBlockingOverlays(page);
+
+  // Close cookie banner and neutralize its overlay if it keeps intercepting clicks.
+  await closeCookieBanner(page);
 
   // Open account menu and click login in overlay pane with retries.
   await openAccountMenuAndClickLogin(page);
