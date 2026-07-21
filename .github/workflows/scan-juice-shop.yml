@@ -95,13 +95,34 @@ jobs:
 
       - name: Run Playwright via ZAP proxy
         run: |
-          echo "Running Playwright tests..."
-          npx playwright test ./tests/ --project=chromium --timeout=120000 --reporter=html --reporter=line
-          RESULT=$?
-          echo "Playwright tests completed with exit code: $RESULT"
+          set -euo pipefail
+
+          echo "Running Playwright tests one scenario at a time..."
+
+          RESULT=0
+          FAILED_SPECS=()
+          shopt -s nullglob
+          TEST_SPECS=(./tests/juice-shop-*.spec.ts)
+
+          for spec in "${TEST_SPECS[@]}"; do
+            scenario=$(basename "$spec")
+            echo "=== Running ${scenario} ==="
+
+            if ! npx playwright test "$spec" --project=chromium --timeout=120000 --reporter=html --reporter=line; then
+              echo "FAILED SCENARIO: ${scenario}" >&2
+              FAILED_SPECS+=("${scenario}")
+              RESULT=1
+            fi
+          done
+
+          if ((${#FAILED_SPECS[@]} > 0)); then
+            echo "=== Failed scenarios ===" >&2
+            printf ' - %s\n' "${FAILED_SPECS[@]}" >&2
+          fi
+
           echo "Checking for playwright-report directory..."
           ls -la playwright-report/ || echo "Warning: playwright-report not found"
-          
+
           echo "Verifying Juice Shop is still running..."
           curl -fsS http://127.0.0.1:3000/ > /dev/null && echo "✓ Juice Shop is accessible" || echo "✗ Juice Shop is not accessible"
 
