@@ -273,6 +273,51 @@ jobs:
               const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
               let createdCount = 0
 
+              const normalize = (value) => String(value || '').trim()
+              const truncate = (value, max = 200) => (value.length > max ? `${value.slice(0, max - 3)}...` : value)
+
+              const getLocationInstances = (finding) => {
+                const instances = Array.isArray(finding.instances) ? finding.instances : []
+                if (instances.length === 0) {
+                  return [
+                    {
+                      uri: 'n/a',
+                      method: 'METHOD',
+                      param: '',
+                      attack: '',
+                      evidence: '',
+                      otherinfo: normalize(finding.otherinfo)
+                    }
+                  ]
+                }
+
+                const seen = new Set()
+                const uniqueInstances = []
+
+                for (const instance of instances) {
+                  const uri = normalize(instance.uri) || 'n/a'
+                  const method = normalize(instance.method) || 'METHOD'
+                  const param = normalize(instance.param)
+                  const key = `${uri}|${method}|${param}`
+
+                  if (seen.has(key)) {
+                    continue
+                  }
+
+                  seen.add(key)
+                  uniqueInstances.push({
+                    uri,
+                    method,
+                    param,
+                    attack: normalize(instance.attack),
+                    evidence: normalize(instance.evidence),
+                    otherinfo: normalize(instance.otherinfo)
+                  })
+                }
+
+                return uniqueInstances
+              }
+
               for (const finding of findings) {
                 const risk = String(finding.riskdesc || finding.riskcode || 'n/a').trim()
                 const alertName = String(finding.alert || 'Unknown alert').trim()
@@ -283,46 +328,51 @@ jobs:
                 const solution = String(finding.solution || '').trim()
                 const reference = String(finding.reference || '').trim()
 
-                const instances = Array.isArray(finding.instances) ? finding.instances : []
-                const locations = instances
-                  .slice(0, 20)
-                  .map((i) => `- ${i.uri || 'n/a'} [${i.method || 'METHOD'}] ${i.param ? `(param: ${i.param})` : ''}`.trim())
+                const locations = getLocationInstances(finding)
 
-                const title = `[ZAP][${risk}] ${alertName} (pluginId:${pluginId})`
-                const body = [
-                  'ZAP scan detected a Medium/High risk vulnerability.',
-                  '',
-                  `- Risk: ${risk}`,
-                  `- Alert: ${alertName}`,
-                  `- Plugin ID: ${pluginId}`,
-                  `- CWE: ${cweId}`,
-                  `- WASC: ${wascId}`,
-                  `- Workflow run: ${runUrl}`,
-                  '',
-                  'Description:',
-                  description || 'n/a',
-                  '',
-                  'Solution:',
-                  solution || 'n/a',
-                  '',
-                  'Reference:',
-                  reference || 'n/a',
-                  '',
-                  'Affected locations (up to 20):',
-                  ...(locations.length > 0 ? locations : ['- n/a']),
-                  '',
-                  '_This issue was created automatically by GitHub Actions._'
-                ].join('\n')
+                for (const location of locations) {
+                  const locationText = `${location.uri} [${location.method}]${location.param ? ` (param: ${location.param})` : ''}`
+                  const title = truncate(`[ZAP][${risk}] ${alertName} @ ${location.method} ${location.uri}`)
+                  const body = [
+                    'ZAP scan detected a Medium/High risk vulnerability.',
+                    '',
+                    `- Risk: ${risk}`,
+                    `- Alert: ${alertName}`,
+                    `- Plugin ID: ${pluginId}`,
+                    `- CWE: ${cweId}`,
+                    `- WASC: ${wascId}`,
+                    `- Workflow run: ${runUrl}`,
+                    '',
+                    'Affected location:',
+                    `- ${locationText}`,
+                    '',
+                    'Description:',
+                    description || 'n/a',
+                    '',
+                    'Solution:',
+                    solution || 'n/a',
+                    '',
+                    'Reference:',
+                    reference || 'n/a',
+                    '',
+                    'Instance details:',
+                    `- Attack: ${location.attack || 'n/a'}`,
+                    `- Evidence: ${location.evidence || 'n/a'}`,
+                    `- Other Info: ${location.otherinfo || 'n/a'}`,
+                    '',
+                    '_This issue was created automatically by GitHub Actions._'
+                  ].join('\n')
 
-                const created = await github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title,
-                  body
-                })
+                  const created = await github.rest.issues.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title,
+                    body
+                  })
 
-                createdCount += 1
-                core.info(`Created issue: ${created.data.html_url}`)
+                  createdCount += 1
+                  core.info(`Created issue: ${created.data.html_url}`)
+                }
               }
 
               core.info(`Created ${createdCount} issue(s) for Medium/High findings.`)
