@@ -68,11 +68,27 @@ export const closeCookieBanner = async (page: Page) => {
 
 // ウェルカムモーダルが表示されている場合は閉じる。
 export const dismissWelcomeBanner = async (page: Page) => {
+  const welcomeDialog = page.getByRole("dialog").filter({
+    has: page.getByRole("button", { name: "Close Welcome Banner" }),
+  });
   const dismissWelcome = page.getByRole("button", {
     name: "Close Welcome Banner",
   });
-  if (await dismissWelcome.isVisible().catch(() => false)) {
-    await dismissWelcome.click();
+
+  // バナーは初期描画後に遅れて表示されることがあるため、短時間だけ待機する。
+  await welcomeDialog.first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (!(await welcomeDialog.first().isVisible().catch(() => false))) {
+      return;
+    }
+
+    await dismissWelcome.first().click({ force: true }).catch(() => {});
+    await page.keyboard.press("Escape").catch(() => {});
+
+    if (!(await welcomeDialog.first().isVisible().catch(() => false))) {
+      return;
+    }
   }
 };
 
