@@ -17,20 +17,39 @@ export const closeBlockingOverlays = async (page: Page) => {
 
 // アカウントメニューを開いてログインをクリックする。オーバーレイが邪魔している場合は閉じる。最大3回までリトライ。
 export const openAccountMenuAndClickLogin = async (page: Page) => {
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  const accountMenuButton = page.locator("#navbarAccount").first();
+  const loginInMenu = page.locator(".cdk-overlay-pane #navbarLoginButton").first();
+
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    if (page.isClosed()) {
+      throw new Error("Page was closed before opening the account menu.");
+    }
+
     await closeBlockingOverlays(page);
+    await neutralizeCookieBanner(page);
 
-    await page.locator("#navbarAccount").click({ timeout: 10000 });
-
-    const loginInMenu = page.locator(".cdk-overlay-pane #navbarLoginButton").first();
-    await loginInMenu.waitFor({ state: "visible", timeout: 10000 });
+    await accountMenuButton.waitFor({ state: "visible", timeout: 5000 });
 
     try {
-      await loginInMenu.click({ timeout: 10000 });
+      await accountMenuButton.click({ timeout: 5000 });
+    } catch (error) {
+      if (page.isClosed()) {
+        throw new Error("Page was closed while clicking the account menu.");
+      }
+      if (attempt === 5) throw error;
+      await page.waitForTimeout(300);
+      continue;
+    }
+
+    await loginInMenu.waitFor({ state: "visible", timeout: 5000 });
+
+    try {
+      await loginInMenu.click({ timeout: 5000 });
       return;
     } catch (error) {
       await closeBlockingOverlays(page);
-      if (attempt === 3) throw error;
+      if (attempt === 5) throw error;
+      await page.waitForTimeout(300);
     }
   }
 };
