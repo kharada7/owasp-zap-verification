@@ -6,6 +6,8 @@ export const closeBlockingOverlays = async (page: Page) => {
     ".cdk-overlay-backdrop.cdk-overlay-backdrop-showing",
   );
   for (let i = 0; i < 5; i++) {
+    await dismissWelcomeBanner(page);
+
     if (!(await backdrop.first().isVisible().catch(() => false))) {
       return;
     }
@@ -104,6 +106,7 @@ export const dismissWelcomeBanner = async (page: Page) => {
 
     await dismissWelcome.first().click({ force: true }).catch(() => {});
     await page.keyboard.press("Escape").catch(() => {});
+    await welcomeDialog.first().waitFor({ state: "hidden", timeout: 2000 }).catch(() => {});
 
     if (!(await welcomeDialog.first().isVisible().catch(() => false))) {
       return;
