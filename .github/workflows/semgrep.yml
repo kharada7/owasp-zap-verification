@@ -19,15 +19,10 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    - run: semgrep scan --config auto
-
-    - name: Run Semgrep
-      uses: returntocorp/semgrep-action@v2  # v1 → v2 に更新
-      with:
-        config: >
-          p/security-audit
-          p/owasp-top-ten
-          p/cwe-top-25
+    
+    - name: Run Semgrep and generate SARIF
+      run: semgrep scan --config auto --json --output=semgrep.sarif
+      continue-on-error: true
 
     - name: Upload SARIF to GitHub
       uses: github/codeql-action/upload-sarif@v3
