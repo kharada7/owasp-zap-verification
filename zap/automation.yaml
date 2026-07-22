@@ -3,6 +3,8 @@ env:
     - name: JuiceShop
       urls:
         - http://127.0.0.1:3000
+      excludePaths:
+        - http://127.0.0.1:3000/socket.io/.*
       authentication:
         method: manual
 
@@ -16,6 +18,10 @@ jobs:
     parameters:
       context: JuiceShop
       maxDuration: 10
+
+  - type: passiveScan-config
+    parameters:
+      scanOnlyInScope: true
 
   - type: passiveScan-wait
     parameters:
