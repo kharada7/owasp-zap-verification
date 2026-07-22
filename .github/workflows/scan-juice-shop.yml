@@ -35,11 +35,25 @@ jobs:
             --name juice-shop \
             --network=host \
             -e NODE_ENV=production \
-            bkimminich/juice-shop:latest > juice-shop.log 2>&1
+            bkimminich/juice-shop:latest
 
       - name: Wait for Juice Shop
         run: |
-          timeout 240 bash -c 'until curl -fsS http://127.0.0.1:3000/ >/dev/null; do sleep 5; done'
+          echo "Waiting for Juice Shop to start..."
+          sleep 15
+          for i in {1..60}; do
+            echo "Attempt $i/60: Checking Juice Shop..."
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then
+              echo "✓ Juice Shop is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          
+          echo "✗ Juice Shop failed to start"
+          echo "=== Juice Shop logs ==="
+          docker logs juice-shop || true
+          exit 1
 
       - name: Start OWASP ZAP
         run: |
@@ -112,7 +126,7 @@ jobs:
             log_file="playwright-logs/${scenario}.log"
             echo "=== Running ${scenario} ==="
 
-            if npx playwright test "$spec" --project=chromium --timeout=120000 --reporter=html --reporter=line 2>&1 | tee "$log_file"; then
+            if npx playwright test "$spec" --project=chromium --timeout=300000 --reporter=html --reporter=line 2>&1 | tee "$log_file"; then
               echo "PASSED SCENARIO: ${scenario}"
             else
               echo "FAILED SCENARIO: ${scenario}" >&2
