@@ -23,6 +23,6 @@
   "homepage": "https://github.com/kharada7/owasp-zap-verification#readme",
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.9.1"
+    "@types/node": "^26.1.1"
   }
 }
