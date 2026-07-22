@@ -48,16 +48,23 @@ describe('/api/Cards', () => {
   })
 
   it('POST new card with all valid fields', () => {
+    const cardNum = 1234567887654321
     return frisby.post(API_URL + '/Cards', {
       headers: authHeader,
       body: {
         fullName: 'Jim',
-        cardNum: 1234567887654321,
+        cardNum,
         expMonth: 1,
         expYear: 2085
       }
     })
       .expect('status', 201)
+      .then(({ json }) => {
+        const expectedLength = String(cardNum).length
+        expect(json.data.cardNum).toMatch(/^\*+\d{4}$/)
+        expect(json.data.cardNum).toMatch(/4321$/)
+        expect(json.data.cardNum).toHaveLength(expectedLength)
+      })
   })
 
   it('POST new card with invalid card number', () => {

@@ -510,6 +510,17 @@ restoreOverwrittenFilesWithOriginals().then(() => {
     } // vuln-code-snippet neutral-line registerAdminChallenge
     // vuln-code-snippet end registerAdminChallenge
 
+    // mask credit card number in POST response to prevent PII disclosure
+    if (name === 'Card') {
+      resource.create.send.before((req: Request, res: Response, context: { instance: { cardNum: number | string }, continue: any }) => {
+        const cardNumber = String(context.instance.cardNum)
+        if (cardNumber.length >= 4) {
+          context.instance.cardNum = '*'.repeat(cardNumber.length - 4) + cardNumber.substring(cardNumber.length - 4)
+        }
+        return context.continue
+      })
+    }
+
     // translate challenge descriptions on-the-fly
     if (name === 'Challenge') {
       resource.list.fetch.after((req: Request, res: Response, context: { instance: string | any[], continue: any }) => {
