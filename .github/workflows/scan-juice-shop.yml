@@ -29,15 +29,13 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Install Juice Shop dependencies
-        working-directory: ./juice-shop
-        run: npm install
-
-      - name: Start Juice Shop from repository
-        working-directory: ./juice-shop
+      - name: Start Juice Shop from Docker
         run: |
-          npm start > ../juice-shop.log 2>&1 &
-          echo $! > ../juice-shop.pid
+          docker run -d \
+            --name juice-shop \
+            --network=host \
+            -e NODE_ENV=production \
+            bkimminich/juice-shop:latest > juice-shop.log 2>&1
 
       - name: Wait for Juice Shop
         run: |
@@ -397,7 +395,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          if [ -f juice-shop.pid ]; then
-            kill "$(cat juice-shop.pid)" || true
-          fi
-          docker rm -f zap || true
+          docker rm -f juice-shop zap || true
