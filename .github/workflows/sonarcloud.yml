@@ -32,5 +32,5 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
         args: >
-          -Dsonar.projectKey=<org>_<repo>
-          -Dsonar.organization=<org>
+          -Dsonar.projectKey=kharada7_owasp-zap-verification
+          -Dsonar.organization=kharada7
