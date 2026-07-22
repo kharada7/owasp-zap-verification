@@ -1,0 +1,50 @@
+version: 2
+updates:
+  # npm (root level)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - kharada7
+    labels:
+      - dependencies
+      - security
+    pull-request-branch-name:
+      separator: "/"
+    allow:
+      - dependency-type: "production"
+      - dependency-type: "development"
+
+  # npm (juice-shop)
+  - package-ecosystem: npm
+    directory: "/juice-shop"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:30"
+    open-pull-requests-limit: 10
+    reviewers:
+      - kharada7
+    labels:
+      - dependencies
+      - security
+    allow:
+      - dependency-type: "production"
+      - dependency-type: "development"
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - kharada7
+    labels:
+      - github-actions
