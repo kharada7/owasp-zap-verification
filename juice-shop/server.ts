@@ -512,7 +512,7 @@ restoreOverwrittenFilesWithOriginals().then(() => {
 
     // mask credit card number in POST response to prevent PII disclosure
     if (name === 'Card') {
-      resource.create.send.before((req: Request, res: Response, context: { instance: { cardNum: any }, continue: any }) => {
+      resource.create.send.before((req: Request, res: Response, context: { instance: { cardNum: number | string }, continue: any }) => {
         const cardNumber = String(context.instance.cardNum)
         if (cardNumber.length >= 4) {
           context.instance.cardNum = '*'.repeat(cardNumber.length - 4) + cardNumber.substring(cardNumber.length - 4)
