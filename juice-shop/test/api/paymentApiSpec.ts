@@ -60,6 +60,7 @@ describe('/api/Cards', () => {
       .expect('status', 201)
       .then(({ json }) => {
         expect(json.data.cardNum).toMatch(/^\*+\d{4}$/)
+        expect(json.data.cardNum).toMatch(/4321$/)
       })
   })
 

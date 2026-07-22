@@ -514,7 +514,9 @@ restoreOverwrittenFilesWithOriginals().then(() => {
     if (name === 'Card') {
       resource.create.send.before((req: Request, res: Response, context: { instance: { cardNum: any }, continue: any }) => {
         const cardNumber = String(context.instance.cardNum)
-        context.instance.cardNum = '*'.repeat(cardNumber.length - 4) + cardNumber.substring(cardNumber.length - 4)
+        if (cardNumber.length >= 4) {
+          context.instance.cardNum = '*'.repeat(cardNumber.length - 4) + cardNumber.substring(cardNumber.length - 4)
+        }
         return context.continue
       })
     }
