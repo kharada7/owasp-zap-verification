@@ -58,6 +58,9 @@ describe('/api/Cards', () => {
       }
     })
       .expect('status', 201)
+      .then(({ json }) => {
+        expect(json.data.cardNum).toMatch(/^\*+\d{4}$/)
+      })
   })
 
   it('POST new card with invalid card number', () => {
