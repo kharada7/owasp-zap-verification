@@ -133,10 +133,24 @@ export const completeJuiceShopPurchase = async (page: Page) => {
     .getByRole("button", { name: "Add to Basket" })
     .click();
 
-  await page.getByRole("button", { name: "Show the shopping cart" }).click();
-  await page.getByRole("button", { name: "Checkout" }).click();
-  await page.getByRole("button", { name: "Add a new address" }).click();
+  // ショッピングカートを開く
+  const cartButton = page.getByRole("button", { name: "Show the shopping cart" });
+  await cartButton.waitFor({ state: "visible", timeout: 10000 });
+  await cartButton.click();
 
+  // チェックアウトパネルが開いたことを確認してからチェックアウトボタンをクリック
+  await page.waitForTimeout(500);
+  const checkoutButton = page.getByRole("button", { name: "Checkout" });
+  await checkoutButton.waitFor({ state: "visible", timeout: 10000 });
+  await checkoutButton.click();
+
+  // 住所追加ボタンをクリック
+  const addAddressButton = page.getByRole("button", { name: "Add a new address" });
+  await addAddressButton.waitFor({ state: "visible", timeout: 10000 });
+  await addAddressButton.click();
+
+  // 追加フォームを塞める
+  await page.waitForTimeout(500);
   await page.getByRole("textbox", { name: "Country" }).fill("Japan");
   await page.getByRole("textbox", { name: "Name" }).fill("Alice");
   await page
@@ -146,25 +160,61 @@ export const completeJuiceShopPurchase = async (page: Page) => {
   await page.getByRole("textbox", { name: "Address" }).fill("Toyosu 1-1-1");
   await page.getByRole("textbox", { name: "City" }).fill("Koto-ku");
   await page.getByRole("textbox", { name: "State" }).fill("Tokyo");
-  await page.getByRole("button", { name: "Submit" }).click();
 
+  // フォーム送信ボタンをクリック
+  const submitButton = page.getByRole("button", { name: "Submit" });
+  await submitButton.waitFor({ state: "visible", timeout: 10000 });
+  await submitButton.click();
+
+  // 住所選択メニューが表示されるまで待機
+  await page.waitForTimeout(500);
   const aliceAddressRow = page
     .locator("tr, mat-row")
     .filter({ hasText: /Alice/ });
+  await aliceAddressRow.first().waitFor({ state: "visible", timeout: 10000 });
   await aliceAddressRow.first().locator("mat-radio-button").first().click();
-  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
 
+  // 次へ進むボタン
+  await page.waitForTimeout(500);
+  const proceedButton1 = page.getByRole("button", { name: /Proceed|Continue/i });
+  await proceedButton1.first().waitFor({ state: "visible", timeout: 10000 });
+  await proceedButton1.first().click();
+
+  // 適逨配送選択メニューを待機
+  await page.waitForTimeout(500);
   const fastDeliveryRow = page
     .locator("tr, mat-row")
     .filter({ hasText: /Fast Delivery/ });
+  await fastDeliveryRow.first().waitFor({ state: "visible", timeout: 10000 });
   await fastDeliveryRow.first().locator("mat-radio-button").first().click();
-  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
 
+  // 次へ進むボタン
+  await page.waitForTimeout(500);
+  const proceedButton2 = page.getByRole("button", { name: /Proceed|Continue/i });
+  await proceedButton2.first().waitFor({ state: "visible", timeout: 10000 });
+  await proceedButton2.first().click();
+
+  // 支払い方法選択メニューを待機
+  await page.waitForTimeout(500);
   const paymentMethodRow = page
     .locator("tr, mat-row")
     .filter({ hasText: /\/\d{4}$/ });
+  await paymentMethodRow.first().waitFor({ state: "visible", timeout: 10000 });
   await paymentMethodRow.first().locator("mat-radio-button").first().click();
-  await page.getByRole("button", { name: /Proceed|Continue/i }).click();
 
-  await page.getByRole("button", { name: "Complete your purchase" }).click();
+  // 次へ進むボタン
+  await page.waitForTimeout(500);
+  const proceedButton3 = page.getByRole("button", { name: /Proceed|Continue/i });
+  await proceedButton3.first().waitFor({ state: "visible", timeout: 10000 });
+  await proceedButton3.first().click();
+
+  // 購入完了ボタンをクリック
+  await page.waitForTimeout(500);
+  const completeButton = page.getByRole("button", { name: "Complete your purchase" });
+  await completeButton.waitFor({ state: "visible", timeout: 10000 });
+  await completeButton.click();
+
+  // 購入完了画面を確認
+  await page.waitForTimeout(500);
+  await page.waitForURL(/order-completion/, { timeout: 10000 });
 };
