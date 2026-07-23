@@ -59,13 +59,13 @@ test("add-cart-and-buy-and-submit-review", async ({ page }) => {
   // 注文履歴テーブルが完全に読み込まれるまで待機。
   await page
     .locator("tr, mat-row")
-    .filter({ hasText: "Best Juice Shop Salesman Artwork" })
+    .filter({ hasText: /Lemon Juice/i })
     .first()
     .waitFor({ state: "visible", timeout: 20000 });
 
   await page
     .locator("tr, mat-row")
-    .filter({ hasText: "Best Juice Shop Salesman Artwork" })
+    .filter({ hasText: /Lemon Juice/i })
     .getByRole("button")
     .first()
     .click();
