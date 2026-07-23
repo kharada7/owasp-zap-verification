@@ -21,7 +21,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'javascript', 'typescript' ]
+        # javascript で TypeScript も自動的にカバーされるため typescript は不要。
+        # 両方を指定すると同一コードベースを二重分析し SARIF カテゴリが競合する。
+        language: [ 'javascript' ]
 
     steps:
     - name: Checkout repository
