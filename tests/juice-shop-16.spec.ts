@@ -38,6 +38,12 @@ test("add-privacy-policy-navigation", async ({ page }) => {
   await expect(page).toHaveURL(/#\/(search|\/search)$/);
   await neutralizeCookieBanner(page);
 
+  // 商品リストはデフォルト12件/ページのため、Lemon Juice が表示されるよう
+  // 検索フィルターを使用してページ遷移する。
+  await page.goto("http://127.0.0.1:3000/#/search?q=Lemon%20Juice", {
+    waitUntil: "domcontentloaded",
+  });
+
   await page
     .locator("mat-card")
     .filter({ hasText: "Lemon Juice (500ml)" })

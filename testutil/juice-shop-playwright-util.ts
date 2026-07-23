@@ -116,12 +116,11 @@ export const dismissWelcomeBanner = async (page: Page) => {
 
 // ログイン後の購入フローを実行し、注文完了画面まで進める。
 export const completeJuiceShopPurchase = async (page: Page) => {
-  // Attempt to add the sold-out mask, then add Lemon Juice.
-  await page
-    .locator("mat-card")
-    .filter({ hasText: "Best Juice Shop Salesman Artwork" })
-    .getByRole("button", { name: "Add to Basket" })
-    .click();
+  // 商品リストはデフォルト12件/ページで表示されるため、Lemon Juice が
+  // ページ2以降に存在する場合がある。検索フィルターで直接表示させる。
+  await page.goto("http://127.0.0.1:3000/#/search?q=Lemon%20Juice", {
+    waitUntil: "domcontentloaded",
+  });
   await page
     .locator("mat-card")
     .filter({ hasText: "Lemon Juice (500ml)" })
