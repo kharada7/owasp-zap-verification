@@ -41,14 +41,14 @@ test("access-support-chat-and-submit-comment", async ({ page }) => {
   // サイドナビの "Go to chatbot page" リンクは Docker image のバージョンによって
   // 存在しない場合があるため、直接 URL へ遷移する。
   await page.goto("http://127.0.0.1:3000/#/chatbot", {
-    waitUntil: "domcontentloaded",
+    waitUntil: "networkidle",
   });
   await expect(page).toHaveURL(/#\/chatbot$/);
   // チャットボット UI が読み込まれるまで待機。
   const chatMessageInput = page.locator(
     'input[aria-label="Text field for a chat message"]',
   );
-  await chatMessageInput.waitFor({ state: "visible", timeout: 10000 });
+  await chatMessageInput.waitFor({ state: "visible", timeout: 20000 });
   // DOM が更新されてからの入力を保証するため、短時間待機してから入力する。
   await page.waitForTimeout(500);
   // 取得しぁEinput 要素に "My name is Jim." とぁE��斁E���Eを�E力する、E

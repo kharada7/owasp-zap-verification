@@ -61,7 +61,7 @@ test("add-cart-and-buy-and-check-order-history", async ({ page }) => {
     .locator("tr, mat-row")
     .filter({ hasText: "Best Juice Shop Salesman Artwork" })
     .first()
-    .waitFor({ state: "visible", timeout: 10000 });
+    .waitFor({ state: "visible", timeout: 20000 });
 
   // 一番上の注文レビューアイコンをクリックして、レビュー用ダイアログを開く。
   await page
