@@ -149,6 +149,15 @@ export const completeJuiceShopPurchase = async (page: Page) => {
     console.log("[Purchase] Starting checkout...");
     const checkoutButton = page.getByRole("button", { name: "Checkout" });
     await checkoutButton.waitFor({ state: "visible", timeout: 10000 });
+    for (let i = 0; i < 20; i++) {
+      if (await checkoutButton.isEnabled().catch(() => false)) {
+        break;
+      }
+      await page.waitForTimeout(300);
+    }
+    if (!(await checkoutButton.isEnabled().catch(() => false))) {
+      throw new Error("Checkout button stayed disabled after adding product to cart.");
+    }
     await checkoutButton.click();
 
     // Add address
