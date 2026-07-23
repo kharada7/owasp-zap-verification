@@ -44,6 +44,10 @@ test("access-support-chat-and-submit-comment", async ({ page }) => {
     waitUntil: "domcontentloaded",
   });
   await expect(page).toHaveURL(/#\/chatbot$/);
+  // チャットボット UI が読み込まれるまで待機。
+  await page
+    .locator('input[aria-label="Text field for a chat message"]')
+    .waitFor({ state: "visible", timeout: 10000 });
 
   // aria-label ぁE"Text field for a chat message" の input 要素を取得する、E
   const chatMessageInput = page.locator(

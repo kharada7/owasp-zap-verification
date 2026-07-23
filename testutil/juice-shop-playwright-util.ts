@@ -121,6 +121,12 @@ export const completeJuiceShopPurchase = async (page: Page) => {
   await page.goto("http://127.0.0.1:3000/#/search?q=Lemon%20Juice", {
     waitUntil: "domcontentloaded",
   });
+  // 検索結果の読み込みを待機して、Lemon Juice カードが表示されるまで待つ。
+  await page
+    .locator("mat-card")
+    .filter({ hasText: "Lemon Juice (500ml)" })
+    .first()
+    .waitFor({ state: "visible", timeout: 10000 });
   await page
     .locator("mat-card")
     .filter({ hasText: "Lemon Juice (500ml)" })
