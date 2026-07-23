@@ -45,16 +45,14 @@ test("access-support-chat-and-submit-comment", async ({ page }) => {
   });
   await expect(page).toHaveURL(/#\/chatbot$/);
   // チャットボット UI が読み込まれるまで待機。
-  await page
-    .locator('input[aria-label="Text field for a chat message"]')
-    .waitFor({ state: "visible", timeout: 10000 });
-
-  // aria-label ぁE"Text field for a chat message" の input 要素を取得する、E
   const chatMessageInput = page.locator(
     'input[aria-label="Text field for a chat message"]',
   );
+  await chatMessageInput.waitFor({ state: "visible", timeout: 10000 });
+  // DOM が更新されてからの入力を保証するため、短時間待機してから入力する。
+  await page.waitForTimeout(500);
   // 取得しぁEinput 要素に "My name is Jim." とぁE��斁E���Eを�E力する、E
-  await chatMessageInput.fill("My name is Jim.");
+  await chatMessageInput.fill("My name is Jim.", { timeout: 5000 });
   // 取得しぁEinput 要素に対して Enter キーを押す、E
   await chatMessageInput.press("Enter");
 });
