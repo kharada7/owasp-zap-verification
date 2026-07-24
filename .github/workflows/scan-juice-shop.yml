@@ -2,6 +2,18 @@ name: Scan OWASP Juice Shop with ZAP and Playwright
 
 on:
   workflow_dispatch:
+    inputs:
+      scan_profile:
+        description: ZAP scan profile for manual run
+        required: true
+        type: choice
+        default: manual
+        options:
+          - manual
+          - nightly
+  # 毎日日本時間の23時に実行
+  schedule:
+    - cron: '0 14 * * *'  
 
 permissions:
   contents: read
@@ -10,7 +22,7 @@ permissions:
 jobs:
   dast:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       ZAP_PROXY: http://127.0.0.1:8080
 
@@ -147,13 +159,36 @@ jobs:
           curl -fsS http://127.0.0.1:3000/ > /dev/null && echo "✓ Juice Shop is accessible" || echo "✗ Juice Shop is not accessible"
 
           exit $RESULT
+
+      - name: Select ZAP automation profile
+        run: |
+          set -euo pipefail
+
+          profile="manual"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            profile="nightly"
+          elif [ "${{ inputs.scan_profile || 'manual' }}" = "nightly" ]; then
+            profile="nightly"
+          fi
+
+          if [ "$profile" = "nightly" ]; then
+            echo "ZAP_AUTOMATION_FILE=zap/automation-nightly.yaml" >> "$GITHUB_ENV"
+            echo "ZAP_WAIT_ITERATIONS=900" >> "$GITHUB_ENV"
+          else
+            echo "ZAP_AUTOMATION_FILE=zap/automation.yaml" >> "$GITHUB_ENV"
+            echo "ZAP_WAIT_ITERATIONS=540" >> "$GITHUB_ENV"
+          fi
+
+          echo "Selected profile: $profile"
+          echo "Selected automation file: ${ZAP_AUTOMATION_FILE:-will be loaded via GITHUB_ENV}"
+
       - name: Generate ZAP report with Automation Framework
         run: |
           set -euo pipefail
 
           mkdir -p reports
 
-          docker cp zap/automation.yaml zap:/tmp/automation.yaml
+          docker cp "$ZAP_AUTOMATION_FILE" zap:/tmp/automation.yaml
           docker exec zap mkdir -p /zap/reports
 
           # 起動中の ZAP デーモンの API 経由で自動化プランを実行する。
@@ -171,11 +206,11 @@ jobs:
             exit 1
           fi
 
-          # レポート生成完了をポーリングで待機（最大 90 分）。
+          # レポート生成完了をポーリングで待機。
           # planId は 0 も有効値になりうるため不正扱いしない。
           echo "Waiting for ZAP reports to be generated..."
           generated=false
-          for i in {1..540}; do
+          for ((i=1; i<=ZAP_WAIT_ITERATIONS; i++)); do
             if docker exec zap sh -c 'test -s /zap/reports/zap-report.html && test -s /zap/reports/zap-report.json'; then
               echo "Reports are present in container."
               generated=true
@@ -183,7 +218,7 @@ jobs:
             fi
 
             progress=$(curl -s "$ZAP_PROXY/JSON/automation/view/planProgress/?planId=$planId" || true)
-            echo "Plan Progress $i/540: ${progress:-<empty>}"
+            echo "Plan Progress $i/$ZAP_WAIT_ITERATIONS: ${progress:-<empty>}"
 
             # 明確な失敗状態が返ってきた場合は待機を打ち切る。
             if echo "$progress" | grep -Eiq '"(status|state|phase)":"(failed|error|aborted|stopped)"'; then

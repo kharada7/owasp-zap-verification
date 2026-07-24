@@ -1,0 +1,45 @@
+env:
+  contexts:
+    - name: JuiceShop
+      urls:
+        - http://127.0.0.1:3000
+      authentication:
+        method: manual
+
+  parameters:
+    failOnError: false
+    failOnWarning: false
+
+jobs:
+
+  - type: spider
+    parameters:
+      context: JuiceShop
+      maxDuration: 20
+
+  - type: spiderAjax
+    parameters:
+      context: JuiceShop
+      maxDuration: 30
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 15
+
+  - type: activeScan
+    parameters:
+      context: JuiceShop
+      maxRuleDurationInMins: 6
+      maxScanDurationInMins: 90
+
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/reports
+      reportFile: zap-report.html
+
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: /zap/reports
+      reportFile: zap-report.json
