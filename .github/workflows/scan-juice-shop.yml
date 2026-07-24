@@ -22,7 +22,7 @@ permissions:
 jobs:
   dast:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
     env:
       ZAP_PROXY: http://127.0.0.1:8080
 
@@ -173,7 +173,7 @@ jobs:
 
           if [ "$profile" = "nightly" ]; then
             echo "ZAP_AUTOMATION_FILE=zap/automation-nightly.yaml" >> "$GITHUB_ENV"
-            echo "ZAP_WAIT_ITERATIONS=900" >> "$GITHUB_ENV"
+            echo "ZAP_WAIT_ITERATIONS=1200" >> "$GITHUB_ENV"
           else
             echo "ZAP_AUTOMATION_FILE=zap/automation.yaml" >> "$GITHUB_ENV"
             echo "ZAP_WAIT_ITERATIONS=540" >> "$GITHUB_ENV"
