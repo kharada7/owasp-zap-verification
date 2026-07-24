@@ -15,22 +15,22 @@ jobs:
   - type: spider
     parameters:
       context: JuiceShop
-      maxDuration: 10
+      maxDuration: 12
 
   - type: spiderAjax
     parameters:
       context: JuiceShop
-      maxDuration: 10
+      maxDuration: 15
 
   - type: passiveScan-wait
     parameters:
-      maxDuration: 5
+      maxDuration: 8
 
   - type: activeScan
     parameters:
       context: JuiceShop
-      maxRuleDurationInMins: 2
-      maxScanDurationInMins: 20
+      maxRuleDurationInMins: 3
+      maxScanDurationInMins: 35
 
   - type: report
     parameters:
