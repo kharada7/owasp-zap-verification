@@ -17,6 +17,11 @@ jobs:
       context: JuiceShop
       maxDuration: 10
 
+  - type: spiderAjax
+    parameters:
+      context: JuiceShop
+      maxDuration: 10
+
   - type: passiveScan-wait
     parameters:
       maxDuration: 5
